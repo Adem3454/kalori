@@ -241,7 +241,7 @@ function recalc(){const t=tot(),f=FJ[S.ai.res.confidence]??.25;
  document.getElementById('tr').textContent=Math.round(t.kcal*(1-f))+' - '+Math.round(t.kcal*(1+f))+' kcal arası'}
 function aiView(){
  const a=S.ai,r=a.res;let b=`<div class="row" style="flex-wrap:wrap;margin-top:12px">${a.photos.map(p=>`<img class="thumb" style="width:72px;height:72px" src="${p.url}" alt="">`).join('')}${!r&&a.photos.length<2?`<label class="btn ghost sm">+ Başka açı<input type="file" accept="image/*" capture="environment" data-pick hidden></label>`:''}</div>`;
- if(!r)b+=`<label style="display:block;margin-top:14px">Ek bilgi (isteğe bağlı)</label><input type="text" name="note" value="${esc(a.note)}" placeholder="Örn. yağda kızarmış, 2 dilim ekmek var" maxlength="150"><small class="mute">İpucu: Tabağın yanına çatal ya da elini koy; yukarıdan bir de yandan çek. Porsiyon daha doğru tahmin edilir.</small><button class="btn" style="margin-top:14px" data-act="analyze" ${a.busy?'disabled':''}>${a.busy?'Analiz ediliyor...':'Analiz et'}</button>`;
+ if(!r)b+=`<label style="display:block;margin-top:14px">Ek bilgi (isteğe bağlı)</label><input type="text" name="note" value="${esc(a.note)}" placeholder="Örn. yağda kızarmış, 2 dilim ekmek var" maxlength="150"><small class="mute">İpucu: Tabağın yanına çatal ya da elini koy; yukarıdan bir de yandan çek. Porsiyon daha doğru tahmin edilir.</small><button class="btn" style="margin-top:14px" data-act="analyze" ${a.busy?'disabled':''}>${a.busy?'Analiz ediliyor (10-20 sn)...':'Analiz et'}</button>`;
  else if(!r.items?.length)b+=`<div class="empty">Yemek algılanamadı. Daha yakından ve aydınlıkta tekrar dene.</div><button class="btn ghost" data-act="aiclose">Kapat</button>`;
  else{const t=tot(),f=FJ[r.confidence]??.25;
   b+=`<h2 style="margin-top:14px">${esc(r.name||'Öğün')}</h2><div class="card"><div class="big" id="tk">${Math.round(t.kcal)}</div><small>kcal, <span id="tr">${Math.round(t.kcal*(1-f))} - ${Math.round(t.kcal*(1+f))} kcal arası</span> (güven: ${{high:'yüksek',medium:'orta',low:'düşük'}[r.confidence]||'orta'})</small></div>
@@ -252,7 +252,9 @@ function aiView(){
  return`<div class="ov"><div class="sheet"><div class="row sp"><h1 style="font-size:22px">Fotoğraftan ekle</h1><button class="x" data-act="aiclose" aria-label="Kapat">×</button></div>${b}</div></div>`}
 async function analyze(){
  const a=S.ai;a.note=document.querySelector('[name=note]')?.value||'';a.busy=true;render();
- const{data,error}=await db.functions.invoke('analyze-meal',{body:{images:a.photos.map(p=>p.b64),note:a.note}});
+ const call=db.functions.invoke('analyze-meal',{body:{images:a.photos.map(p=>p.b64),note:a.note}});
+ const to=new Promise(r=>setTimeout(()=>r({data:{error:'Çok uzun sürdü, tekrar dene.'}}),60000));
+ const{data,error}=await Promise.race([call,to]);
  a.busy=false;
  if(error||!data||data.error||!Array.isArray(data.items)){toast(data?.error||'Analiz yapılamadı. Bağlantını ve kurulumu kontrol et.');return render()}
  data.items=data.items.map(x=>({...x,grams:Math.max(0,+x.grams||0),kcal_per_100g:+x.kcal_per_100g||0}));
