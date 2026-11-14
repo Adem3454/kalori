@@ -58,6 +58,19 @@ label.btn.ghost{color:var(--acc)}
 .btn:disabled{opacity:.6}
 .it{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--line)}
 .it small{display:block}
+.av{border-radius:50%;object-fit:cover;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;flex:none}
+.frow{display:flex;align-items:center;gap:12px;padding:12px 14px;margin-bottom:10px;background:#fff;border:1px solid var(--line);border-radius:16px;width:100%;text-align:left}
+.frow small{color:var(--mute)}.newb{color:var(--acc);font-weight:700}
+.tap{cursor:pointer}
+.hero{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:14px;margin:12px 0;cursor:zoom-in}
+.zoom{position:fixed;inset:0;background:#000;z-index:20;display:flex;align-items:center;justify-content:center}.zoom img{max-width:100%;max-height:100%}
+select{width:100%;padding:13px 14px;border:1.5px solid var(--line);border-radius:12px;background:#fff;margin:4px 0 12px;font:inherit}
+.seg{display:flex;background:#E3E8E3;border-radius:12px;padding:3px;margin-bottom:14px}.seg button{flex:1;padding:9px;border-radius:10px;font-weight:600;color:var(--mute)}.seg button.on{background:#fff;color:var(--acc)}
+.bars{display:flex;align-items:flex-end;gap:3px;height:130px;position:relative}.bars i{flex:1;background:var(--acc);border-radius:4px 4px 0 0;min-height:2px}.bars i.over{background:var(--over)}
+.gl{position:absolute;left:0;right:0;border-top:2px dashed var(--sun)}
+.bl{display:flex;gap:3px;margin-top:4px}.bl span{flex:1;text-align:center;font-size:11px;color:var(--mute)}
+.mbar{display:flex;height:12px;border-radius:6px;overflow:hidden;margin:12px 0;background:#E3E8E3}.mbar i{display:block}
+.big small{font-size:16px;font-weight:500;color:var(--mute)}
 </style></head>
 <body><div id="app"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
@@ -66,7 +79,7 @@ label.btn.ghost{color:var(--acc)}
 const db=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const app=document.getElementById('app');
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const S={tab:'today',day:new Date(),meals:[],fr:[],names:{},feed:[],sheet:false,mode:'login',urls:{},ai:null};
+const S={tab:'today',day:new Date(),meals:[],fr:[],names:{},feed:[],sheet:false,mode:'login',urls:{},ai:null,pr:{},av:{},view:null,detail:null,zoom:null,body:null,rep:null,rt:'week'};
 const range=d=>{const a=new Date(d);a.setHours(0,0,0,0);const b=new Date(a);b.setDate(b.getDate()+1);return[a.toISOString(),b.toISOString()]};
 const hm=t=>new Date(t).toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'});
 function toast(t){const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.append(e);setTimeout(()=>e.remove(),3200)}
@@ -104,7 +117,8 @@ async function boot(){
  S.me=session.user;
  const{data:p}=await db.from('profiles').select('*').eq('id',S.me.id).single();
  if(!p){await db.auth.signOut();return authView()}
- S.p=p;await load()}
+ S.p=p;{const{data:bi}=await db.from('body_info').select('*').maybeSingle();S.body=bi}
+ await load()}
 
 async function load(){
  const[a,b]=range(S.day);
@@ -114,12 +128,15 @@ async function load(){
  S.meals=m.data||[];S.fr=f.data||[];
  const ids=[...new Set(S.fr.flatMap(x=>[x.requester,x.addressee]))].filter(i=>i!==S.me.id);
  S.names={};
- if(ids.length){const{data:ps}=await db.from('profiles').select('id,username').in('id',ids);(ps||[]).forEach(p=>S.names[p.id]=p.username)}
+ S.pr={[S.me.id]:S.p};
+ if(ids.length){const{data:ps}=await db.from('profiles').select('id,username,avatar_path,daily_goal').in('id',ids);(ps||[]).forEach(p=>{S.names[p.id]=p.username;S.pr[p.id]=p})}
  const fids=S.fr.filter(x=>x.status==='accepted').map(x=>x.requester===S.me.id?x.addressee:x.requester);
  S.feed=[];
  if(fids.length){const{data:fm}=await db.from('meals').select('*').in('user_id',fids).gte('eaten_at',a).lt('eaten_at',b).order('eaten_at',{ascending:false});S.feed=fm||[]}
  const ps=[...S.meals,...S.feed].map(m=>m.photo_path).filter(Boolean);S.urls={};
  if(ps.length){const{data:su}=await db.storage.from('meal-photos').createSignedUrls(ps,3600);(su||[]).forEach(x=>{if(x.signedUrl)S.urls[x.path]=x.signedUrl})}
+ const ap=Object.values(S.pr).map(p=>p.avatar_path).filter(Boolean);S.av={};
+ if(ap.length){const{data:au}=await db.storage.from('avatars').createSignedUrls(ap,3600);(au||[]).forEach(x=>{if(x.signedUrl)S.av[x.path]=x.signedUrl})}
  render()}
 
 /* ---------- Ekranlar ---------- */
@@ -131,7 +148,7 @@ function dayBar(){
 function todayView(){
  const sum=k=>Math.round(S.meals.reduce((s,m)=>s+(+m[k]||0),0));
  const eaten=sum('kcal'),goal=S.p.daily_goal,left=goal-eaten,over=left<0,C=2*Math.PI*54;
- const list=S.meals.length?`<ul>${S.meals.map(m=>`<li class="m">${th(m)}<div><b>${esc(m.name)}</b><small>${hm(m.eaten_at)}${m.protein||m.carbs||m.fat?`, P ${+m.protein||0} K ${+m.carbs||0} Y ${+m.fat||0}`:''}</small></div><span class="k">${m.kcal}</span><button class="x" data-act="del" data-id="${m.id}" aria-label="Sil">×</button></li>`).join('')}</ul>`:`<div class="empty">Bu gün için öğün yok. “Öğün ekle” ile başla.</div>`;
+ const list=S.meals.length?`<ul>${S.meals.map(m=>`<li class="m tap" data-act="detail" data-id="${m.id}">${th(m)}<div><b>${esc(m.name)}</b><small>${hm(m.eaten_at)}${m.protein||m.carbs||m.fat?`, P ${+m.protein||0} K ${+m.carbs||0} Y ${+m.fat||0}`:''}</small></div><span class="k">${m.kcal}</span><button class="x" data-act="del" data-id="${m.id}" aria-label="Sil">×</button></li>`).join('')}</ul>`:`<div class="empty">Bu gün için öğün yok. “Öğün ekle” ile başla.</div>`;
  return`${dayBar()}<div class="card"><div class="ring">
  <svg width="124" height="124" viewBox="0 0 124 124"><circle cx="62" cy="62" r="54" fill="none" stroke="#E3E8E3" stroke-width="12"/><circle cx="62" cy="62" r="54" fill="none" stroke="${over?'var(--over)':'var(--acc)'}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C*(1-Math.min(eaten/goal,1))}"/></svg>
  <div><div class="big" style="color:${over?'var(--over)':'inherit'}">${Math.abs(left)}</div><div class="mute">${over?'kcal hedefin üstünde':'kcal kaldı'}</div><small>${eaten} / ${goal} kcal yendi</small></div></div>
@@ -139,26 +156,76 @@ function todayView(){
  <h2>Öğünler</h2><div class="card" style="padding:4px 16px">${list}</div>
  <button class="fab" data-act="add">+ Öğün ekle</button>`}
 
+const hue=s=>[...s].reduce((a,c)=>a+c.charCodeAt(0),0)*47%360;
+function avatar(id,sz=44){const p=id===S.me.id?S.p:(S.pr[id]||{}),u=p.avatar_path&&S.av[p.avatar_path],n=p.username||'?';
+ return u?`<img class="av" style="width:${sz}px;height:${sz}px" src="${u}" alt="">`:`<span class="av" style="width:${sz}px;height:${sz}px;font-size:${Math.round(sz*.42)}px;background:hsl(${hue(n)} 42% 36%)">${esc(n[0].toUpperCase())}</span>`}
+const seen=id=>{try{return localStorage.getItem('seen_'+id)||''}catch{return''}};
+function markSeen(id){const ms=S.feed.filter(m=>m.user_id===id);if(!ms.length)return;try{localStorage.setItem('seen_'+id,ms.map(m=>m.eaten_at).sort().pop())}catch{}}
 function friendsView(){
+ if(S.view?.friend)return friendPage(S.view.friend);
  const me=S.me.id,inc=S.fr.filter(x=>x.status==='pending'&&x.addressee===me),out=S.fr.filter(x=>x.status==='pending'&&x.requester===me),acc=S.fr.filter(x=>x.status==='accepted');
- const other=x=>x.requester===me?x.addressee:x.requester;
- const byUser={};S.feed.forEach(m=>(byUser[m.user_id]??=[]).push(m));
- const block=x=>{const id=other(x),ms=byUser[id]||[],tot=ms.reduce((s,m)=>s+m.kcal,0);
-  return`<div class="card" style="margin-bottom:10px"><div class="row sp"><b>${esc(S.names[id]||'?')}</b><span class="k">${tot} kcal</span></div>
-  ${ms.length?`<ul>${ms.map(m=>`<li class="m">${th(m)}<div><b>${esc(m.name)}</b><small>${hm(m.eaten_at)}</small></div><span class="k">${m.kcal}</span></li>`).join('')}</ul>`:'<small>Bu gün paylaşılan öğün yok.</small>'}
-  <button class="link" style="margin-top:8px;color:var(--mute);font-weight:500" data-act="unfriend" data-id="${x.id}">Arkadaşlıktan çıkar</button></div>`};
+ const other=x=>x.requester===me?x.addressee:x.requester,today=new Date().toDateString()===S.day.toDateString();
+ const by={};S.feed.forEach(m=>(by[m.user_id]??=[]).push(m));
+ const row=x=>{const id=other(x),ms=by[id]||[],s=seen(id),nw=today?ms.filter(m=>!s||new Date(m.eaten_at)>new Date(s)).length:0,tot=ms.reduce((a,m)=>a+m.kcal,0);
+  const sub=nw?`<span class="newb">${nw} yeni öğün</span>`:ms.length?`${ms.length} öğün, ${tot} kcal`:'Öğün yok';
+  const ph=ms.filter(m=>S.urls[m.photo_path]).slice(0,3).map(m=>`<img class="thumb" style="width:34px;height:34px;border-radius:8px" src="${S.urls[m.photo_path]}" alt="">`).join('');
+  return`<button class="frow" data-act="friend" data-id="${id}">${avatar(id,48)}<span style="flex:1;min-width:0"><b>${esc(S.names[id]||'?')}</b><small style="display:block">${sub}</small></span><span class="row" style="gap:4px">${ph}</span><span class="mute">›</span></button>`};
  return`${dayBar()}
  <form data-form="friend" class="row" style="align-items:flex-end"><div style="flex:1"><label>Kullanıcı adıyla arkadaş ekle</label><input type="text" name="u" required autocapitalize="none" style="margin-bottom:0"></div><button class="btn sm" style="height:50px">İstek gönder</button></form>
- ${inc.length?`<h2>Gelen istekler</h2>${inc.map(x=>`<div class="card row sp" style="margin-bottom:8px"><b>${esc(S.names[x.requester])}</b><span class="row"><button class="btn sm" data-act="accept" data-id="${x.id}">Kabul et</button><button class="btn sm ghost" data-act="unfriend" data-id="${x.id}">Reddet</button></span></div>`).join('')}`:''}
+ ${inc.length?`<h2>Gelen istekler</h2>${inc.map(x=>`<div class="card row sp" style="margin-bottom:8px"><span class="row">${avatar(x.requester,36)}<b>${esc(S.names[x.requester])}</b></span><span class="row"><button class="btn sm" data-act="accept" data-id="${x.id}">Kabul et</button><button class="btn sm ghost" data-act="unfriend" data-id="${x.id}">Reddet</button></span></div>`).join('')}`:''}
  ${out.length?`<h2>Gönderilen istekler</h2>${out.map(x=>`<div class="card row sp" style="margin-bottom:8px"><span>${esc(S.names[x.addressee])}</span><small>yanıt bekliyor</small></div>`).join('')}`:''}
- <h2>Arkadaşlar</h2>${acc.length?acc.map(block).join(''):'<div class="empty">Henüz arkadaşın yok. Yukarıdan kullanıcı adıyla ekle.</div>'}`}
-
-function settingsView(){
- return`<h1 style="margin:6px 0 14px">Ayarlar</h1><div class="card"><p><b>${esc(S.p.username)}</b></p><small>${esc(S.me.email)}</small>
- <form data-form="goal" style="margin-top:14px"><label>Günlük kalori hedefi (kcal)</label><input type="number" name="g" min="800" max="6000" value="${S.p.daily_goal}"><button class="btn">Hedefi kaydet</button></form></div>
- <h2>Verilerin</h2><button class="btn ghost" data-act="csv">Tüm öğünleri CSV olarak indir</button>
- <button class="link" style="color:var(--over)" data-act="logout">Çıkış yap</button>`}
-
+ <h2>Arkadaşlar</h2>${acc.length?acc.map(row).join(''):'<div class="empty">Henüz arkadaşın yok. Yukarıdan kullanıcı adıyla ekle.</div>'}`}
+function friendPage(id){
+ const x=S.fr.find(f=>f.status==='accepted'&&(f.requester===id||f.addressee===id)),ms=S.feed.filter(m=>m.user_id===id),tot=ms.reduce((a,m)=>a+m.kcal,0),g=S.pr[id]?.daily_goal;
+ return`<button class="link" style="text-align:left;margin:0 0 8px" data-act="fback">‹ Arkadaşlar</button>
+ <div class="row" style="gap:14px">${avatar(id,64)}<div><h1>${esc(S.names[id]||'')}</h1><small>${tot} kcal${g?` / ${g} hedef`:''}</small></div></div>${dayBar()}
+ ${ms.length?`<div class="card" style="padding:4px 16px"><ul>${ms.map(m=>`<li class="m tap" data-act="detail" data-id="${m.id}">${th(m)}<div><b>${esc(m.name)}</b><small>${hm(m.eaten_at)}</small></div><span class="k">${m.kcal}</span><span class="mute">›</span></li>`).join('')}</ul></div>`:'<div class="empty">Bu gün paylaşılan öğün yok.</div>'}
+ <button class="link" style="color:var(--mute);font-weight:500" data-act="unfriend" data-id="${x?.id}">Arkadaşlıktan çıkar</button>`}
+function detailView(){
+ const m=S.detail,own=m.user_id===S.me.id,u=S.urls[m.photo_path],it=Array.isArray(m.items)?m.items:[];
+ return`<div class="ov" data-act="dclose"><div class="sheet" data-stop><div class="row sp"><div><h1 style="font-size:22px">${esc(m.name)}</h1><small>${own?'':esc(S.names[m.user_id]||'')+', '}${new Date(m.eaten_at).toLocaleString('tr-TR',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'})}</small></div><button class="x" data-act="dclose" aria-label="Kapat">×</button></div>
+ ${u?`<img class="hero" src="${u}" alt="Yemek fotoğrafı" data-act="zoom" data-id="${m.id}"><small class="mute">Büyütmek için fotoğrafa dokun.</small>`:''}
+ <div class="card" style="margin-top:10px"><div class="big">${m.kcal}<small> kcal</small></div><div class="macros"><div><b>${+m.protein||0} g</b><small>protein</small></div><div><b>${+m.carbs||0} g</b><small>karbonhidrat</small></div><div><b>${+m.fat||0} g</b><small>yağ</small></div></div></div>
+ ${it.length?`<h2>İçindekiler</h2><div class="card" style="padding:4px 16px">${it.map(x=>`<div class="it"><div><b>${esc(x.name)}</b><small>${Math.round(x.grams)} g</small></div><span class="k">${Math.round(x.grams*x.kcal_per_100g/100)} kcal</span></div>`).join('')}</div>`:''}
+ ${own?`<button class="link" style="color:var(--over)" data-act="del" data-id="${m.id}">Öğünü sil</button>`:''}</div></div>`}
+const zoomView=()=>`<div class="zoom" data-act="zclose"><button class="x" style="position:absolute;top:calc(env(safe-area-inset-top) + 10px);right:10px;color:#fff;font-size:36px" data-act="zclose" aria-label="Kapat">×</button><img src="${S.zoom}" alt=""></div>`;
+function calcGoal(b){const age=new Date().getFullYear()-b.birth_year,bmr=10*b.weight_kg+6.25*b.height_cm-5*age+(b.sex==='m'?5:-161);
+ const act={sedentary:1.2,light:1.375,moderate:1.55,high:1.725}[b.activity]||1.375,adj={lose:.85,maintain:1,gain:1.1}[b.goal]||1;
+ return Math.round(Math.max(bmr*act*adj,b.sex==='m'?1500:1200)/10)*10}
+function profileView(){
+ const b=S.body||{},sel=(n,o,v)=>`<select name="${n}">${o.map(([k,t])=>`<option value="${k}" ${v===k?'selected':''}>${t}</option>`).join('')}</select>`;
+ return`<h1 style="margin:6px 0 14px">Profil</h1>
+ <div class="card"><div class="row" style="gap:14px">${avatar(S.me.id,64)}<div style="flex:1"><b>${esc(S.p.username)}</b><small style="display:block">${esc(S.me.email)}</small></div></div>
+ <label class="btn ghost sm" style="margin-top:12px;display:inline-block">Fotoğrafı değiştir<input type="file" accept="image/*" data-av hidden></label></div>
+ <h2>Günlük hedefin</h2><div class="card"><div class="big">${S.p.daily_goal}<small> kcal</small></div><small>${b.weight_kg?'Bilgilerine göre hesaplandı.':'Hedefini hesaplamak için bilgilerini doldur.'}</small>
+ <form data-form="body" style="margin-top:14px"><label>Cinsiyet</label>${sel('sex',[['f','Kadın'],['m','Erkek']],b.sex)}
+ <div class="g3"><div><label>Doğum yılı</label><input type="number" name="by" required min="1930" max="2008" inputmode="numeric" value="${b.birth_year||''}"></div><div><label>Boy (cm)</label><input type="number" name="h" required min="120" max="230" inputmode="numeric" value="${b.height_cm||''}"></div><div><label>Kilo (kg)</label><input type="number" name="w" required min="30" max="300" step="any" inputmode="decimal" value="${b.weight_kg||''}"></div></div>
+ <label>Aktivite</label>${sel('act',[['sedentary','Hareketsiz (masa başı)'],['light','Hafif (haftada 1-3 spor)'],['moderate','Orta (haftada 3-5 spor)'],['high','Çok aktif (her gün)']],b.activity||'light')}
+ <label>Amacın</label>${sel('goal',[['lose','Kilo vermek'],['maintain','Kiloyu korumak'],['gain','Kilo almak']],b.goal||'maintain')}
+ <button class="btn">Hesapla ve kaydet</button></form></div>
+ <h2>Hesap</h2><button class="btn ghost" data-act="csv">Tüm öğünleri CSV olarak indir</button><button class="link" style="color:var(--over)" data-act="logout">Çıkış yap</button>`}
+async function loadReport(){
+ const a=new Date();a.setHours(0,0,0,0);a.setDate(a.getDate()-29);
+ const{data}=await db.from('meals').select('kcal,protein,carbs,fat,eaten_at').eq('user_id',S.me.id).gte('eaten_at',a.toISOString());
+ const ds=Array.from({length:30},(_,i)=>{const d=new Date(a);d.setDate(a.getDate()+i);return{d,kcal:0,p:0,c:0,f:0,n:0}});
+ (data||[]).forEach(m=>{const t=new Date(m.eaten_at);t.setHours(0,0,0,0);const x=ds[Math.round((t-a)/864e5)];if(x){x.kcal+=m.kcal;x.p+=+m.protein||0;x.c+=+m.carbs||0;x.f+=+m.fat||0;x.n++}});
+ S.rep=ds;render()}
+function reportView(){
+ const r=S.rt,g=S.p.daily_goal,ds=S.rep;let b='<div class="empty">Yükleniyor...</div>';
+ if(ds&&r==='day'){const x=ds[29],pk=x.p*4,ck=x.c*4,fk=x.f*9,t=pk+ck+fk||1,pc=v=>Math.round(v/t*100);
+  b=`<div class="card"><div class="big">${x.kcal}<small> / ${g} kcal</small></div><small>${x.n} öğün</small><div class="mbar"><i style="width:${pk/t*100}%;background:var(--acc)"></i><i style="width:${ck/t*100}%;background:var(--sun)"></i><i style="width:${fk/t*100}%;background:var(--over)"></i></div>
+  <div class="macros"><div><b>${Math.round(x.p)} g</b><small>protein %${pc(pk)}</small></div><div><b>${Math.round(x.c)} g</b><small>karb. %${pc(ck)}</small></div><div><b>${Math.round(x.f)} g</b><small>yağ %${pc(fk)}</small></div></div></div>`}
+ else if(ds){const n=r==='week'?7:30,d=ds.slice(-n),lg=d.filter(x=>x.n),am=k=>lg.length?Math.round(lg.reduce((a,x)=>a+x[k],0)/lg.length):0,mx=Math.max(g*1.3,...d.map(x=>x.kcal));
+  b=`<div class="card"><div class="bars">${d.map(x=>`<i class="${x.kcal>g*1.05?'over':''}" style="height:${x.kcal/mx*100}%"></i>`).join('')}<div class="gl" style="bottom:${g/mx*100}%"></div></div>${r==='week'?`<div class="bl">${d.map(x=>`<span>${x.d.toLocaleDateString('tr-TR',{weekday:'narrow'})}</span>`).join('')}</div>`:''}<small style="display:block;margin-top:8px">Kesikli çizgi hedefin (${g} kcal). Turuncu çubuk hedefi aşan gün.</small></div>
+  <div class="card" style="margin-top:10px"><div class="macros"><div><b>${am('kcal')}</b><small>ort. kcal/gün</small></div><div><b>${lg.filter(x=>x.kcal<=g*1.05).length}/${lg.length}</b><small>hedefi aşmayan gün</small></div></div>
+  <div class="macros"><div><b>${am('p')} g</b><small>ort. protein</small></div><div><b>${am('c')} g</b><small>ort. karb.</small></div><div><b>${am('f')} g</b><small>ort. yağ</small></div></div></div>`}
+ return`<h1 style="margin:6px 0 14px">Rapor</h1><div class="seg">${[['day','Günlük'],['week','Haftalık'],['month','Aylık']].map(([k,t])=>`<button class="${r===k?'on':''}" data-act="rtab" data-id="${k}">${t}</button>`).join('')}</div>${b}`}
+app.addEventListener('change',async e=>{
+ if(!e.target.matches('[data-av]'))return;const f=e.target.files[0];if(!f)return;
+ try{const ph=await shrink(f,320),old=S.p.avatar_path,path=`${S.me.id}/a${Date.now()}.jpg`;
+  const u=await db.storage.from('avatars').upload(path,ph.blob,{contentType:'image/jpeg'});if(u.error)throw u.error;
+  await db.from('profiles').update({avatar_path:path}).eq('id',S.me.id);S.p.avatar_path=path;
+  if(old)db.storage.from('avatars').remove([old]);load()}catch{toast('Fotoğraf yüklenemedi.')}});
 function sheetView(){
  return`<div class="ov" data-act="close"><div class="sheet" data-stop><div class="row sp"><h1 style="font-size:22px">Öğün ekle</h1><button class="x" data-act="close" aria-label="Kapat">×</button></div>
  <div class="pick"><label class="btn">Fotoğraf çek<input type="file" accept="image/*" capture="environment" data-pick hidden></label><label class="btn ghost">Galeriden seç<input type="file" accept="image/*" data-pick hidden></label></div><small class="mute">Fotoğraftan kalori tahmini yapılır. Ya da elle gir:</small><form data-form="meal" style="margin-top:12px"><label>Ne yedin?</label><input type="text" name="name" required maxlength="80" placeholder="Örn. Mercimek çorbası">
@@ -167,9 +234,9 @@ function sheetView(){
  <label class="chk"><input type="checkbox" name="shared" checked> Arkadaşlarım görebilsin</label><button class="btn">Kaydet</button></form></div></div>`}
 
 function render(){
- const v=S.tab==='today'?todayView():S.tab==='friends'?friendsView():settingsView();
+ const v=S.tab==='today'?todayView():S.tab==='friends'?friendsView():S.tab==='report'?reportView():profileView();
  const pend=S.fr.filter(x=>x.status==='pending'&&x.addressee===S.me.id).length;
- app.innerHTML=v+`<nav><div>${[['today','Bugün'],['friends','Arkadaşlar'+(pend?` (${pend})`:'')],['settings','Ayarlar']].map(([k,t])=>`<button data-act="tab" data-id="${k}" class="${S.tab===k?'on':''}">${t}</button>`).join('')}</div></nav>`+(S.sheet?sheetView():'')+(S.ai?aiView():'')}
+ app.innerHTML=v+`<nav><div>${[['today','Bugün'],['friends','Arkadaşlar'+(pend?` (${pend})`:'')],['report','Rapor'],['settings','Profil']].map(([k,t])=>`<button data-act="tab" data-id="${k}" class="${S.tab===k?'on':''}">${t}</button>`).join('')}</div></nav>`+(S.sheet?sheetView():'')+(S.ai?aiView():'')+(S.detail?detailView():'')+(S.zoom?zoomView():'')}
 
 /* ---------- Olaylar ---------- */
 const shift=n=>{S.day=new Date(S.day);S.day.setDate(S.day.getDate()+n);load()};
@@ -179,12 +246,19 @@ app.addEventListener('click',async e=>{
  if(el.classList.contains('ov')&&e.target!==el)return;
  const a=el.dataset.act,id=el.dataset.id;
  if(a==='mode'){S.mode=S.mode==='login'?'register':'login';authView()}
- else if(a==='tab'){S.tab=id;render()}
+ else if(a==='tab'){S.tab=id;S.view=null;if(id==='report')return loadReport();render()}
  else if(a==='prev')shift(-1);else if(a==='next')shift(1);
  else if(a==='add'){S.sheet=true;render()}else if(a==='close'){S.sheet=false;render()}
- else if(a==='del'){if(confirm('Bu öğün silinsin mi?')){const pm=S.meals.find(x=>x.id===id);const r=await db.from('meals').delete().eq('id',id);if(!r.error&&pm?.photo_path)db.storage.from('meal-photos').remove([pm.photo_path]);if(r.error)toast(trErr(r.error.message));load()}}
+ else if(a==='del'){if(confirm('Bu öğün silinsin mi?')){const pm=S.meals.find(x=>x.id===id);const r=await db.from('meals').delete().eq('id',id);if(!r.error&&pm?.photo_path)db.storage.from('meal-photos').remove([pm.photo_path]);if(r.error)toast(trErr(r.error.message));S.detail=null;load()}}
  else if(a==='accept'){await db.from('friendships').update({status:'accepted'}).eq('id',id);toast('Arkadaş eklendi.');load()}
- else if(a==='unfriend'){if(confirm('Bu arkadaşlık/istek kaldırılsın mı?')){await db.from('friendships').delete().eq('id',id);load()}}
+ else if(a==='unfriend'){if(confirm('Bu arkadaşlık/istek kaldırılsın mı?')){await db.from('friendships').delete().eq('id',id);S.view=null;load()}}
+ else if(a==='detail'){S.detail=[...S.meals,...S.feed].find(x=>x.id===id);render()}
+ else if(a==='dclose'){S.detail=null;render()}
+ else if(a==='zoom'){S.zoom=S.urls[S.detail.photo_path];render()}
+ else if(a==='zclose'){S.zoom=null;render()}
+ else if(a==='friend'){S.view={friend:id};markSeen(id);render()}
+ else if(a==='fback'){S.view=null;render()}
+ else if(a==='rtab'){S.rt=id;render()}
  else if(a==='aiclose'){S.ai=null;render()}
  else if(a==='analyze')analyze();
  else if(a==='aidel'){S.ai.res.items.splice(+id,1);render()}
@@ -216,6 +290,12 @@ app.addEventListener('submit',async e=>{
   const r=await db.from('friendships').insert({addressee:p.id});
   if(r.error)return toast(trErr(r.error.message));
   toast('İstek gönderildi.');load()}
+ if(k==='body'){
+  const b={sex:f.get('sex'),birth_year:+f.get('by'),height_cm:+f.get('h'),weight_kg:+f.get('w'),activity:f.get('act'),goal:f.get('goal')};
+  if(new Date().getFullYear()-b.birth_year<18)return toast('Bu hesaplama 18 yaş ve üzeri içindir.');
+  const g=calcGoal(b),r1=await db.from('body_info').upsert({id:S.me.id,...b});if(r1.error)return toast(trErr(r1.error.message));
+  const r2=await db.from('profiles').update({daily_goal:g}).eq('id',S.me.id);if(r2.error)return toast(trErr(r2.error.message));
+  S.body=b;S.p.daily_goal=g;toast('Günlük hedefin '+g+' kcal.');render()}
  if(k==='goal'){
   const g=Math.round(+f.get('g'));
   const r=await db.from('profiles').update({daily_goal:g}).eq('id',S.me.id);
@@ -226,9 +306,9 @@ app.addEventListener('submit',async e=>{
 const th=m=>S.urls[m.photo_path]?`<img class="thumb" src="${S.urls[m.photo_path]}" alt="">`:'';
 const FJ={high:.15,medium:.25,low:.35};
 const PRE=[{name:'Zeytinyağı 1 yk',grams:14,kcal_per_100g:884,protein_per_100g:0,carbs_per_100g:0,fat_per_100g:100},{name:'Ekmek 1 dilim',grams:30,kcal_per_100g:265,protein_per_100g:9,carbs_per_100g:49,fat_per_100g:3},{name:'Sos/mayonez 1 yk',grams:15,kcal_per_100g:680,protein_per_100g:1,carbs_per_100g:1,fat_per_100g:75}];
-async function shrink(f){
+async function shrink(f,mx=1024){
  const bm=await createImageBitmap(f,{imageOrientation:'from-image'});
- const k=Math.min(1,1024/Math.max(bm.width,bm.height));
+ const k=Math.min(1,mx/Math.max(bm.width,bm.height));
  const c=document.createElement('canvas');c.width=Math.round(bm.width*k);c.height=Math.round(bm.height*k);
  c.getContext('2d').drawImage(bm,0,0,c.width,c.height);
  const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.7));
