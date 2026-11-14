@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="tr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#EEF1EC">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Kalori">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Kalori</title>
+<style>
+:root{--bg:#EEF1EC;--ink:#14231F;--mute:#5E6E69;--card:#fff;--line:#DDE3DD;--acc:#3D3BC8;--sun:#FFB703;--over:#D9480F;color-scheme:light}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font:16px/1.4 ui-rounded,"SF Pro Rounded",system-ui,sans-serif;-webkit-text-size-adjust:100%}
+#app{max-width:480px;margin:0 auto;min-height:100%;padding:calc(env(safe-area-inset-top) + 14px) 16px calc(env(safe-area-inset-bottom) + 84px)}
+h1{font-size:28px;letter-spacing:-.02em}h2{font-size:18px;margin:22px 0 8px}
+small,.mute{color:var(--mute);font-size:13px}
+button,input{font:inherit;color:inherit}
+button{border:0;background:none;cursor:pointer}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.card{background:var(--card);border-radius:18px;padding:16px;border:1px solid var(--line)}
+.btn{background:var(--acc);color:#fff;border-radius:14px;padding:13px 18px;font-weight:650;width:100%}
+.btn.ghost{background:transparent;color:var(--acc);border:1.5px solid var(--acc)}
+.btn.sm{width:auto;padding:8px 14px;font-size:14px;border-radius:10px}
+input[type=text],input[type=email],input[type=password],input[type=number]{width:100%;padding:13px 14px;border:1.5px solid var(--line);border-radius:12px;background:#fff;margin:4px 0 12px}
+label{font-size:13px;color:var(--mute)}
+.row{display:flex;gap:10px;align-items:center}.sp{justify-content:space-between}
+.days{display:flex;align-items:center;justify-content:space-between;margin:6px 0 14px}
+.days button{font-size:26px;padding:4px 14px;color:var(--acc)}
+.ring{display:flex;align-items:center;gap:18px}
+.ring svg{flex:none;transform:rotate(-90deg)}
+.big{font-size:44px;font-weight:750;letter-spacing:-.03em;line-height:1}
+.macros{display:flex;gap:18px;margin-top:12px}.macros b{display:block;font-size:17px}
+ul{list-style:none;padding:0}
+li.m{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
+li.m:last-child{border:0}li.m div{flex:1;min-width:0}li.m b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.k{font-weight:700}.x{color:var(--mute);font-size:22px;padding:2px 8px}
+.empty{padding:22px 4px;text-align:center;color:var(--mute)}
+nav{position:fixed;left:0;right:0;bottom:0;background:rgba(238,241,236,.94);backdrop-filter:blur(12px);border-top:1px solid var(--line);padding:6px 8px calc(env(safe-area-inset-bottom) + 6px)}
+nav div{max-width:480px;margin:auto;display:flex}
+nav button{flex:1;padding:12px 4px;border-radius:12px;font-weight:600;color:var(--mute)}
+nav button.on{color:var(--acc);background:#fff}
+.fab{position:fixed;right:max(16px,calc(50% - 224px));bottom:calc(env(safe-area-inset-bottom) + 78px);background:var(--sun);color:var(--ink);font-weight:750;border-radius:999px;padding:14px 22px;box-shadow:0 6px 18px rgba(20,35,31,.22)}
+.ov{position:fixed;inset:0;background:rgba(20,35,31,.45);display:flex;align-items:flex-end;justify-content:center;z-index:5}
+.sheet{background:var(--bg);width:100%;max-width:480px;border-radius:22px 22px 0 0;padding:18px 16px calc(env(safe-area-inset-bottom) + 18px);max-height:92%;overflow:auto;animation:up .22s ease-out}
+@keyframes up{from{transform:translateY(40px);opacity:0}}
+@media(prefers-reduced-motion:reduce){.sheet{animation:none}}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.chk{display:flex;gap:10px;align-items:center;margin:4px 0 16px;color:var(--ink);font-size:15px}.chk input{width:20px;height:20px}
+.toast{position:fixed;top:calc(env(safe-area-inset-top) + 10px);left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:12px;z-index:9;max-width:90%;font-size:14px}
+.auth{padding-top:9vh}.auth h1{margin-bottom:6px}.auth p{margin-bottom:22px}
+.link{color:var(--acc);font-weight:650;margin-top:16px;display:block;width:100%;text-align:center}
+</style></head>
+<body><div id="app"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+// ====== BURAYI DOLDUR (Supabase > Project Settings > API) ======
+const SUPABASE_URL="https://vbumolnsagwxhaergclq.supabase.co";
+const SUPABASE_KEY="sb_publishable_a5HceSSxMHKJjdIyK-LSxQ_H0IK4xdo";
+// ===============================================================
+const db=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const app=document.getElementById('app');
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const S={tab:'today',day:new Date(),meals:[],fr:[],names:{},feed:[],sheet:false,mode:'login'};
+const range=d=>{const a=new Date(d);a.setHours(0,0,0,0);const b=new Date(a);b.setDate(b.getDate()+1);return[a.toISOString(),b.toISOString()]};
+const hm=t=>new Date(t).toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'});
+function toast(t){const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.append(e);setTimeout(()=>e.remove(),3200)}
+function trErr(m=''){
+ if(/Invalid login/i.test(m))return'E-posta veya şifre hatalı.';
+ if(/already registered/i.test(m))return'Bu e-posta zaten kayıtlı.';
+ if(/at least 6/i.test(m))return'Şifre en az 6 karakter olmalı.';
+ if(/Database error saving/i.test(m))return'Bu kullanıcı adı alınmış olabilir, başka dene.';
+ if(/duplicate key/i.test(m))return'Bu istek zaten var.';
+ return m}
+
+/* ---------- Giriş ---------- */
+function authView(){
+ const reg=S.mode==='register';
+ app.innerHTML=`<div class="auth"><h1>Kalori</h1><p class="mute">${reg?'Hesap oluştur, öğünlerini kaydetmeye başla.':'Hesabınla giriş yap.'}</p>
+ <form data-form="auth">
+ ${reg?`<label>Kullanıcı adı (arkadaşların seni bununla bulur)</label><input type="text" name="username" required pattern="[a-zA-Z0-9_]{3,20}" autocapitalize="none" autocomplete="username">`:''}
+ <label>E-posta</label><input type="email" name="email" required autocomplete="email">
+ <label>Şifre</label><input type="password" name="password" required minlength="6" autocomplete="${reg?'new-password':'current-password'}">
+ <button class="btn">${reg?'Hesap oluştur':'Giriş yap'}</button></form>
+ <button class="link" data-act="mode">${reg?'Zaten hesabım var':'Yeni hesap oluştur'}</button></div>`}
+
+async function submitAuth(f){
+ const email=f.get('email'),password=f.get('password');let r;
+ if(S.mode==='login')r=await db.auth.signInWithPassword({email,password});
+ else r=await db.auth.signUp({email,password,options:{data:{username:(f.get('username')||'').trim().toLowerCase()}}});
+ if(r.error)return toast(trErr(r.error.message));
+ if(!r.data.session){toast('Kayıt oluştu. E-postanı onaylayıp giriş yap.');S.mode='login';return authView()}
+ boot()}
+
+/* ---------- Veri ---------- */
+async function boot(){
+ const{data:{session}}=await db.auth.getSession();
+ if(!session)return authView();
+ S.me=session.user;
+ const{data:p}=await db.from('profiles').select('*').eq('id',S.me.id).single();
+ if(!p){await db.auth.signOut();return authView()}
+ S.p=p;await load()}
+
+async function load(){
+ const[a,b]=range(S.day);
+ const[m,f]=await Promise.all([
+  db.from('meals').select('*').eq('user_id',S.me.id).gte('eaten_at',a).lt('eaten_at',b).order('eaten_at'),
+  db.from('friendships').select('*')]);
+ S.meals=m.data||[];S.fr=f.data||[];
+ const ids=[...new Set(S.fr.flatMap(x=>[x.requester,x.addressee]))].filter(i=>i!==S.me.id);
+ S.names={};
+ if(ids.length){const{data:ps}=await db.from('profiles').select('id,username').in('id',ids);(ps||[]).forEach(p=>S.names[p.id]=p.username)}
+ const fids=S.fr.filter(x=>x.status==='accepted').map(x=>x.requester===S.me.id?x.addressee:x.requester);
+ S.feed=[];
+ if(fids.length){const{data:fm}=await db.from('meals').select('*').in('user_id',fids).gte('eaten_at',a).lt('eaten_at',b).order('eaten_at',{ascending:false});S.feed=fm||[]}
+ render()}
+
+/* ---------- Ekranlar ---------- */
+function dayBar(){
+ const today=new Date().toDateString()===S.day.toDateString();
+ const t=today?'Bugün':S.day.toLocaleDateString('tr-TR',{weekday:'long',day:'numeric',month:'long'});
+ return`<div class="days"><button data-act="prev" aria-label="Önceki gün">‹</button><h1>${t}</h1><button data-act="next" aria-label="Sonraki gün" ${today?'disabled style="opacity:.25"':''}>›</button></div>`}
+
+function todayView(){
+ const sum=k=>Math.round(S.meals.reduce((s,m)=>s+(+m[k]||0),0));
+ const eaten=sum('kcal'),goal=S.p.daily_goal,left=goal-eaten,over=left<0,C=2*Math.PI*54;
+ const list=S.meals.length?`<ul>${S.meals.map(m=>`<li class="m"><div><b>${esc(m.name)}</b><small>${hm(m.eaten_at)}${m.protein||m.carbs||m.fat?`, P ${+m.protein||0} K ${+m.carbs||0} Y ${+m.fat||0}`:''}</small></div><span class="k">${m.kcal}</span><button class="x" data-act="del" data-id="${m.id}" aria-label="Sil">×</button></li>`).join('')}</ul>`:`<div class="empty">Bu gün için öğün yok. “Öğün ekle” ile başla.</div>`;
+ return`${dayBar()}<div class="card"><div class="ring">
+ <svg width="124" height="124" viewBox="0 0 124 124"><circle cx="62" cy="62" r="54" fill="none" stroke="#E3E8E3" stroke-width="12"/><circle cx="62" cy="62" r="54" fill="none" stroke="${over?'var(--over)':'var(--acc)'}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C*(1-Math.min(eaten/goal,1))}"/></svg>
+ <div><div class="big" style="color:${over?'var(--over)':'inherit'}">${Math.abs(left)}</div><div class="mute">${over?'kcal hedefin üstünde':'kcal kaldı'}</div><small>${eaten} / ${goal} kcal yendi</small></div></div>
+ <div class="macros"><div><b>${sum('protein')} g</b><small>protein</small></div><div><b>${sum('carbs')} g</b><small>karbonhidrat</small></div><div><b>${sum('fat')} g</b><small>yağ</small></div></div></div>
+ <h2>Öğünler</h2><div class="card" style="padding:4px 16px">${list}</div>
+ <button class="fab" data-act="add">+ Öğün ekle</button>`}
+
+function friendsView(){
+ const me=S.me.id,inc=S.fr.filter(x=>x.status==='pending'&&x.addressee===me),out=S.fr.filter(x=>x.status==='pending'&&x.requester===me),acc=S.fr.filter(x=>x.status==='accepted');
+ const other=x=>x.requester===me?x.addressee:x.requester;
+ const byUser={};S.feed.forEach(m=>(byUser[m.user_id]??=[]).push(m));
+ const block=x=>{const id=other(x),ms=byUser[id]||[],tot=ms.reduce((s,m)=>s+m.kcal,0);
+  return`<div class="card" style="margin-bottom:10px"><div class="row sp"><b>${esc(S.names[id]||'?')}</b><span class="k">${tot} kcal</span></div>
+  ${ms.length?`<ul>${ms.map(m=>`<li class="m"><div><b>${esc(m.name)}</b><small>${hm(m.eaten_at)}</small></div><span class="k">${m.kcal}</span></li>`).join('')}</ul>`:'<small>Bu gün paylaşılan öğün yok.</small>'}
+  <button class="link" style="margin-top:8px;color:var(--mute);font-weight:500" data-act="unfriend" data-id="${x.id}">Arkadaşlıktan çıkar</button></div>`};
+ return`${dayBar()}
+ <form data-form="friend" class="row" style="align-items:flex-end"><div style="flex:1"><label>Kullanıcı adıyla arkadaş ekle</label><input type="text" name="u" required autocapitalize="none" style="margin-bottom:0"></div><button class="btn sm" style="height:50px">İstek gönder</button></form>
+ ${inc.length?`<h2>Gelen istekler</h2>${inc.map(x=>`<div class="card row sp" style="margin-bottom:8px"><b>${esc(S.names[x.requester])}</b><span class="row"><button class="btn sm" data-act="accept" data-id="${x.id}">Kabul et</button><button class="btn sm ghost" data-act="unfriend" data-id="${x.id}">Reddet</button></span></div>`).join('')}`:''}
+ ${out.length?`<h2>Gönderilen istekler</h2>${out.map(x=>`<div class="card row sp" style="margin-bottom:8px"><span>${esc(S.names[x.addressee])}</span><small>yanıt bekliyor</small></div>`).join('')}`:''}
+ <h2>Arkadaşlar</h2>${acc.length?acc.map(block).join(''):'<div class="empty">Henüz arkadaşın yok. Yukarıdan kullanıcı adıyla ekle.</div>'}`}
+
+function settingsView(){
+ return`<h1 style="margin:6px 0 14px">Ayarlar</h1><div class="card"><p><b>${esc(S.p.username)}</b></p><small>${esc(S.me.email)}</small>
+ <form data-form="goal" style="margin-top:14px"><label>Günlük kalori hedefi (kcal)</label><input type="number" name="g" min="800" max="6000" value="${S.p.daily_goal}"><button class="btn">Hedefi kaydet</button></form></div>
+ <h2>Verilerin</h2><button class="btn ghost" data-act="csv">Tüm öğünleri CSV olarak indir</button>
+ <button class="link" style="color:var(--over)" data-act="logout">Çıkış yap</button>`}
+
+function sheetView(){
+ return`<div class="ov" data-act="close"><div class="sheet" data-stop><div class="row sp"><h1 style="font-size:22px">Öğün ekle</h1><button class="x" data-act="close" aria-label="Kapat">×</button></div>
+ <form data-form="meal" style="margin-top:12px"><label>Ne yedin?</label><input type="text" name="name" required maxlength="80" placeholder="Örn. Mercimek çorbası">
+ <label>Kalori (kcal)</label><input type="number" name="kcal" required min="0" max="5000" inputmode="numeric">
+ <div class="g3"><div><label>Protein g</label><input type="number" name="protein" min="0" step="any" inputmode="decimal"></div><div><label>Karb. g</label><input type="number" name="carbs" min="0" step="any" inputmode="decimal"></div><div><label>Yağ g</label><input type="number" name="fat" min="0" step="any" inputmode="decimal"></div></div>
+ <label class="chk"><input type="checkbox" name="shared" checked> Arkadaşlarım görebilsin</label><button class="btn">Kaydet</button></form></div></div>`}
+
+function render(){
+ const v=S.tab==='today'?todayView():S.tab==='friends'?friendsView():settingsView();
+ const pend=S.fr.filter(x=>x.status==='pending'&&x.addressee===S.me.id).length;
+ app.innerHTML=v+`<nav><div>${[['today','Bugün'],['friends','Arkadaşlar'+(pend?` (${pend})`:'')],['settings','Ayarlar']].map(([k,t])=>`<button data-act="tab" data-id="${k}" class="${S.tab===k?'on':''}">${t}</button>`).join('')}</div></nav>`+(S.sheet?sheetView():'')}
+
+/* ---------- Olaylar ---------- */
+const shift=n=>{S.day=new Date(S.day);S.day.setDate(S.day.getDate()+n);load()};
+app.addEventListener('click',async e=>{
+ if(e.target.closest('[data-stop]')&&!e.target.closest('[data-act]'))return;
+ const el=e.target.closest('[data-act]');if(!el)return;
+ if(el.classList.contains('ov')&&e.target!==el)return;
+ const a=el.dataset.act,id=el.dataset.id;
+ if(a==='mode'){S.mode=S.mode==='login'?'register':'login';authView()}
+ else if(a==='tab'){S.tab=id;render()}
+ else if(a==='prev')shift(-1);else if(a==='next')shift(1);
+ else if(a==='add'){S.sheet=true;render()}else if(a==='close'){S.sheet=false;render()}
+ else if(a==='del'){if(confirm('Bu öğün silinsin mi?')){const r=await db.from('meals').delete().eq('id',id);if(r.error)toast(trErr(r.error.message));load()}}
+ else if(a==='accept'){await db.from('friendships').update({status:'accepted'}).eq('id',id);toast('Arkadaş eklendi.');load()}
+ else if(a==='unfriend'){if(confirm('Bu arkadaşlık/istek kaldırılsın mı?')){await db.from('friendships').delete().eq('id',id);load()}}
+ else if(a==='logout'){await db.auth.signOut();authView()}
+ else if(a==='csv'){
+  const{data}=await db.from('meals').select('eaten_at,name,kcal,protein,carbs,fat').eq('user_id',S.me.id).order('eaten_at');
+  const q=v=>`"${String(v??'').replace(/"/g,'""')}"`;
+  const csv='tarih,ogun,kcal,protein,karb,yag\n'+(data||[]).map(r=>[r.eaten_at,r.name,r.kcal,r.protein,r.carbs,r.fat].map(q).join(',')).join('\n');
+  const f=new File([csv],'kalori.csv',{type:'text/csv'});
+  if(navigator.canShare?.({files:[f]}))navigator.share({files:[f]}).catch(()=>{});
+  else{const u=URL.createObjectURL(f),l=document.createElement('a');l.href=u;l.download='kalori.csv';l.click()}}
+});
+app.addEventListener('submit',async e=>{
+ e.preventDefault();const f=new FormData(e.target),k=e.target.dataset.form;
+ if(k==='auth')return submitAuth(f);
+ if(k==='meal'){
+  const d=new Date(S.day),n=new Date();d.setHours(n.getHours(),n.getMinutes());
+  const num=x=>f.get(x)===''?null:+f.get(x);
+  const r=await db.from('meals').insert({name:f.get('name').trim(),kcal:Math.round(+f.get('kcal')),protein:num('protein'),carbs:num('carbs'),fat:num('fat'),eaten_at:d.toISOString(),shared:f.get('shared')==='on'});
+  if(r.error)return toast(trErr(r.error.message));
+  S.sheet=false;load()}
+ if(k==='friend'){
+  const u=f.get('u').trim().toLowerCase();
+  const{data:p}=await db.from('profiles').select('id').eq('username',u).maybeSingle();
+  if(!p)return toast('Bu kullanıcı adı bulunamadı.');
+  if(p.id===S.me.id)return toast('Kendini ekleyemezsin.');
+  const r=await db.from('friendships').insert({addressee:p.id});
+  if(r.error)return toast(trErr(r.error.message));
+  toast('İstek gönderildi.');load()}
+ if(k==='goal'){
+  const g=Math.round(+f.get('g'));
+  const r=await db.from('profiles').update({daily_goal:g}).eq('id',S.me.id);
+  if(r.error)return toast(trErr(r.error.message));
+  S.p.daily_goal=g;toast('Hedef kaydedildi.');render()}
+});
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+boot();
+</script></body></html>
