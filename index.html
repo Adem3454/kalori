@@ -186,7 +186,7 @@ function detailView(){
  return`<div class="ov" data-act="dclose"><div class="sheet" data-stop><div class="row sp"><div><h1 style="font-size:22px">${esc(m.name)}</h1><small>${own?'':esc(S.names[m.user_id]||'')+', '}${new Date(m.eaten_at).toLocaleString('tr-TR',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'})}</small></div><button class="x" data-act="dclose" aria-label="Kapat">×</button></div>
  ${u?`<img class="hero" src="${u}" alt="Yemek fotoğrafı" data-act="zoom" data-id="${m.id}"><small class="mute">Büyütmek için fotoğrafa dokun.</small>`:''}
  <div class="card" style="margin-top:10px"><div class="big">${m.kcal}<small> kcal</small></div><div class="macros"><div><b>${+m.protein||0} g</b><small>protein</small></div><div><b>${+m.carbs||0} g</b><small>karbonhidrat</small></div><div><b>${+m.fat||0} g</b><small>yağ</small></div></div></div>
- ${it.length?`<h2>İçindekiler</h2><div class="card" style="padding:4px 16px">${it.map(x=>`<div class="it"><div><b>${esc(x.name)}</b><small>${Math.round(x.grams)} g, ${im(x).split(', ')[1]}</small></div><span class="k">${Math.round(x.grams*x.kcal_per_100g/100)} kcal</span></div>`).join('')}</div>`:''}
+ ${it.length?`<h2>İçindekiler</h2><div class="card" style="padding:4px 16px">${it.map(x=>`<div class="it"><div><b>${esc(x.name)}</b><small>${Math.round(x.grams)} g, ${mm(x)}</small></div><span class="k">${Math.round(x.grams*x.kcal_per_100g/100)} kcal</span></div>`).join('')}</div>`:''}
  ${own?`<button class="link" style="color:var(--over)" data-act="del" data-id="${m.id}">Öğünü sil</button>`:''}</div></div>`}
 const zoomView=()=>`<div class="zoom" data-act="zclose"><button class="x" style="position:absolute;top:calc(env(safe-area-inset-top) + 10px);right:10px;color:#fff;font-size:36px" data-act="zclose" aria-label="Kapat">×</button><img src="${S.zoom}" alt=""></div>`;
 function calcGoal(b){const age=new Date().getFullYear()-b.birth_year,bmr=10*b.weight_kg+6.25*b.height_cm-5*age+(b.sex==='m'?5:-161);
@@ -203,7 +203,7 @@ function profileView(){
  <label>Aktivite</label>${sel('act',[['sedentary','Hareketsiz (masa başı)'],['light','Hafif (haftada 1-3 spor)'],['moderate','Orta (haftada 3-5 spor)'],['high','Çok aktif (her gün)']],b.activity||'light')}
  <label>Amacın</label>${sel('goal',[['lose','Kilo vermek'],['maintain','Kiloyu korumak'],['gain','Kilo almak']],b.goal||'maintain')}
  <button class="btn">Hesapla ve kaydet</button></form></div>
- <h2>Hesap</h2><button class="btn ghost" data-act="csv">Tüm öğünleri CSV olarak indir</button><button class="link" style="color:var(--over)" data-act="logout">Çıkış yap</button>`}
+ <h2>Hesap</h2><button class="btn ghost" data-act="csv">Tüm öğünleri CSV olarak indir</button><button class="link" style="color:var(--over)" data-act="logout">Çıkış yap</button><small class="mute" style="display:block;text-align:center;margin-top:18px">Sürüm ${VER}</small>`}
 async function loadReport(){
  const a=new Date();a.setHours(0,0,0,0);a.setDate(a.getDate()-29);
  const{data}=await db.from('meals').select('kcal,protein,carbs,fat,eaten_at').eq('user_id',S.me.id).gte('eaten_at',a.toISOString());
@@ -314,7 +314,9 @@ async function shrink(f,mx=1024){
  const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.7));
  const b64=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result.split(',')[1]);fr.readAsDataURL(blob)});
  return{blob,b64,url:URL.createObjectURL(blob)}}
-const im=x=>{const f=v=>Math.round(x.grams*(+v||0)/100);return f(x.kcal_per_100g)+' kcal, P '+f(x.protein_per_100g)+' K '+f(x.carbs_per_100g)+' Y '+f(x.fat_per_100g)+' g'};
+const VER='v5';
+const mm=x=>{const f=v=>Math.round(x.grams*(+v||0)/100);return 'protein '+f(x.protein_per_100g)+' g, karb. '+f(x.carbs_per_100g)+' g, yağ '+f(x.fat_per_100g)+' g'};
+const im=x=>Math.round(x.grams*(+x.kcal_per_100g||0)/100)+' kcal, '+mm(x);
 function tot(){const it=S.ai.res.items,s=k=>it.reduce((a,x)=>a+x.grams*(+x[k]||0)/100,0);return{kcal:s('kcal_per_100g'),p:s('protein_per_100g'),c:s('carbs_per_100g'),f:s('fat_per_100g')}}
 function recalc(){const t=tot(),f=FJ[S.ai.res.confidence]??.25;
  S.ai.res.items.forEach((x,i)=>{const e=document.getElementById('k'+i);if(e)e.textContent=im(x)});
@@ -327,7 +329,7 @@ function aiView(){
  else if(!r.items?.length)b+=`<div class="empty">Yemek algılanamadı. Daha yakından ve aydınlıkta tekrar dene.</div><button class="btn ghost" data-act="aiclose">Kapat</button>`;
  else{const t=tot(),f=FJ[r.confidence]??.25;
   b+=`<h2 style="margin-top:14px">${esc(r.name||'Öğün')}</h2><div class="card"><div class="big" id="tk">${Math.round(t.kcal)}</div><small>kcal, <span id="tr">${Math.round(t.kcal*(1-f))} - ${Math.round(t.kcal*(1+f))} kcal arası</span> (güven: ${{high:'yüksek',medium:'orta',low:'düşük'}[r.confidence]||'orta'})</small><div class="macros"><div><b id="tp">${Math.round(t.p)} g</b><small>protein</small></div><div><b id="tc">${Math.round(t.c)} g</b><small>karbonhidrat</small></div><div><b id="tf">${Math.round(t.f)} g</b><small>yağ</small></div></div></div>
-  <h2>Gramları düzelt</h2><small class="mute">P protein, K karbonhidrat, Y yağ (gram)</small>${r.items.map((x,i)=>`<div class="it"><div><b>${esc(x.name)}</b><small id="k${i}">${im(x)}</small></div><div class="row"><input type="number" inputmode="decimal" data-g="${i}" value="${Math.round(x.grams)}" min="0" style="margin:0;width:78px" aria-label="gram"><button class="x" data-act="aidel" data-id="${i}" aria-label="Kaldır">×</button></div></div>`).join('')}
+  <h2>Gramları düzelt</h2>${r.items.map((x,i)=>`<div class="it"><div><b>${esc(x.name)}</b><small id="k${i}">${im(x)}</small></div><div class="row"><input type="number" inputmode="decimal" data-g="${i}" value="${Math.round(x.grams)}" min="0" style="margin:0;width:78px" aria-label="gram"><button class="x" data-act="aidel" data-id="${i}" aria-label="Kaldır">×</button></div></div>`).join('')}
   <small style="display:block;margin-top:10px">Eksik mi? Ekle:</small><div class="row" style="flex-wrap:wrap;margin:6px 0 12px">${PRE.map((p,i)=>`<button class="btn ghost sm" data-act="aiadd" data-id="${i}">${p.name}</button>`).join('')}</div>
   ${r.questions?.length?`<div class="card" style="margin-bottom:12px"><b>Şunları kontrol et</b><ul>${r.questions.map(q=>`<li><small>${esc(q)}</small></li>`).join('')}</ul></div>`:''}
   <label class="chk"><input type="checkbox" name="sh" checked> Arkadaşlarım görebilsin</label><button class="btn" data-act="aisave">Kaydet</button>`}
