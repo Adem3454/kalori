@@ -79,6 +79,7 @@ select{width:100%;padding:13px 14px;border:1.5px solid var(--line);border-radius
 select{color:var(--ink)}
 .sbar{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 134px);max-width:456px;margin:auto;background:var(--ink);color:var(--bg);padding:10px 12px;border-radius:14px;display:flex;gap:10px;align-items:center;z-index:8;font-size:14px}
 .sbar .x{color:var(--bg)}
+nav button{font-size:14px}
 </style></head>
 <body><div id="app"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
@@ -132,17 +133,21 @@ async function boot(){
 
 async function load(){
  const[a,b]=range(S.day);
- const[m,f]=await Promise.all([
+ const[m,f,n]=await Promise.all([
   db.from('meals').select('*').eq('user_id',S.me.id).gte('eaten_at',a).lt('eaten_at',b).order('eaten_at'),
-  db.from('friendships').select('*')]);
+  db.from('friendships').select('*'),
+  db.from('notifications').select('*').order('created_at',{ascending:false}).limit(40)]);
  S.meals=m.data||[];S.fr=f.data||[];
- const ids=[...new Set(S.fr.flatMap(x=>[x.requester,x.addressee]))].filter(i=>i!==S.me.id);
+ const nt=n.data||[],ids=[...new Set([...S.fr.flatMap(x=>[x.requester,x.addressee]),...nt.map(x=>x.actor_id)])].filter(i=>i!==S.me.id);
  S.names={};
  S.pr={[S.me.id]:S.p};
  if(ids.length){const{data:ps}=await db.from('profiles').select('id,username,avatar_path,daily_goal').in('id',ids);(ps||[]).forEach(p=>{S.names[p.id]=p.username;S.pr[p.id]=p})}
  const fids=S.fr.filter(x=>x.status==='accepted').map(x=>x.requester===S.me.id?x.addressee:x.requester);
  S.feed=[];
  if(fids.length){const{data:fm}=await db.from('meals').select('*').in('user_id',fids).gte('eaten_at',a).lt('eaten_at',b).order('eaten_at',{ascending:false});S.feed=fm||[]}
+ {const old=new Set((S.nt||[]).map(x=>x.id));S.nt=nt;
+  if(S.ntLoaded){const nw=nt.filter(x=>!x.read&&!old.has(x.id));if(nw.length)toast(ntText(nw[0])+(nw.length>1?` (+${nw.length-1})`:''))}
+  S.ntLoaded=true}
  if(!S.stT||Date.now()-S.stT>120000){S.stT=Date.now();await loadStreaks([S.me.id,...fids])}
  const ps=[...S.meals,...S.feed].map(m=>m.photo_path).filter(Boolean);S.urls={};
  if(ps.length){const{data:su}=await db.storage.from('meal-photos').createSignedUrls(ps,3600);(su||[]).forEach(x=>{if(x.signedUrl)S.urls[x.path]=x.signedUrl})}
@@ -168,7 +173,7 @@ function todayView(){
  <button class="fab" data-act="add">+ Öğün ekle</button>`}
 
 const hue=s=>[...s].reduce((a,c)=>a+c.charCodeAt(0),0)*47%360;
-function avatar(id,sz=44){const p=id===S.me.id?S.p:(S.pr[id]||{}),u=p.avatar_path&&S.av[p.avatar_path],n=p.username||'?';
+function avatar(id,sz=44){const p=id===S.me.id?S.p:(S.pr[id]||{}),u=p.avatar_path&&S.av[p.avatar_path],n=p.username||S.names[id]||'?';
  return u?`<img class="av" style="width:${sz}px;height:${sz}px" src="${u}" alt="">`:`<span class="av" style="width:${sz}px;height:${sz}px;font-size:${Math.round(sz*.42)}px;background:hsl(${hue(n)} 42% 36%)">${esc(n[0].toUpperCase())}</span>`}
 const seen=id=>{try{return localStorage.getItem('seen_'+id)||''}catch{return''}};
 function markSeen(id){const ms=S.feed.filter(m=>m.user_id===id);if(!ms.length)return;try{localStorage.setItem('seen_'+id,ms.map(m=>m.eaten_at).sort().pop())}catch{}}
@@ -214,6 +219,7 @@ function profileView(){
  <label>Aktivite</label>${sel('act',[['sedentary','Hareketsiz (masa başı)'],['light','Hafif (haftada 1-3 spor)'],['moderate','Orta (haftada 3-5 spor)'],['high','Çok aktif (her gün)']],b.activity||'light')}
  <label>Amacın</label>${sel('goal',[['lose','Kilo vermek'],['maintain','Kiloyu korumak'],['gain','Kilo almak']],b.goal||'maintain')}
  <button class="btn">Hesapla ve kaydet</button></form></div>
+ <h2>Telefon bildirimleri</h2><small class="mute">Arkadaşın öğün eklediğinde, not ya da tepki bıraktığında uygulama kapalıyken de haber alırsın. Uygulamanın ana ekrana eklenmiş olması gerekir.</small><div class="row" style="margin:8px 0"><button class="btn sm" data-act="pushon">Aç</button><button class="btn ghost sm" data-act="pushoff">Kapat</button></div>
  <h2>Görünüm</h2><div class="seg">${[['auto','Otomatik'],['light','Açık'],['dark','Koyu']].map(([k,t])=>`<button class="${(localStorage.getItem('theme')||'auto')===k?'on':''}" data-act="theme" data-id="${k}">${t}</button>`).join('')}</div>
  <label class="chk"><input type="checkbox" data-rem ${localStorage.getItem('rem_off')==='1'?'':'checked'}> Hatırlatıcıları göster (öğün eklemediysen, pazar günü haftalık özet)</label>
  <h2>Hesap</h2><button class="btn ghost" data-act="csv">Tüm öğünleri CSV olarak indir</button><button class="link" style="color:var(--over)" data-act="logout">Çıkış yap</button><button class="link" style="color:var(--over);font-weight:500" data-act="delacc">Hesabımı ve verilerimi sil</button><small class="mute" style="display:block;text-align:center;margin-top:18px">Sürüm ${VER}</small>`}
@@ -250,9 +256,9 @@ function sheetView(){
  <label class="chk"><input type="checkbox" name="shared" checked> Arkadaşlarım görebilsin</label><button class="btn">Kaydet</button></form></div></div>`}
 
 function render(){
- const v=S.tab==='today'?todayView():S.tab==='friends'?friendsView():S.tab==='report'?reportView():profileView();
+ const v=S.tab==='today'?todayView():S.tab==='friends'?friendsView():S.tab==='report'?reportView():S.tab==='notif'?notifView():profileView();
  const pend=S.fr.filter(x=>x.status==='pending'&&x.addressee===S.me.id).length;
- app.innerHTML=v+`<nav><div>${[['today','Bugün'],['friends','Arkadaşlar'+(pend?` (${pend})`:'')],['report','Rapor'],['settings','Profil']].map(([k,t])=>`<button data-act="tab" data-id="${k}" class="${S.tab===k?'on':''}">${t}</button>`).join('')}</div></nav>`+(S.sheet?sheetView():'')+(S.ai?aiView():'')+(S.detail?detailView():'')+(S.zoom?zoomView():'')+(S.bc?bcView():'')+(S.saved?savedBarView():'')}
+ app.innerHTML=v+`<nav><div>${[['today','Bugün'],['friends','Arkadaşlar'+(pend?` (${pend})`:'')],['report','Rapor'],['notif','Bildirim'+((S.nt||[]).some(x=>!x.read)?` (${S.nt.filter(x=>!x.read).length})`:'')],['settings','Profil']].map(([k,t])=>`<button data-act="tab" data-id="${k}" class="${S.tab===k?'on':''}">${t}</button>`).join('')}</div></nav>`+(S.sheet?sheetView():'')+(S.ai?aiView():'')+(S.detail?detailView():'')+(S.zoom?zoomView():'')+(S.bc?bcView():'')+(S.saved?savedBarView():'')}
 
 /* ---------- Olaylar ---------- */
 const shift=n=>{S.day=new Date(S.day);S.day.setDate(S.day.getDate()+n);load()};
@@ -298,6 +304,10 @@ app.addEventListener('click',async e=>{
   for(const b of['meal-photos','avatars']){const{data}=await db.storage.from(b).list(S.me.id,{limit:1000});if(data?.length)await db.storage.from(b).remove(data.map(x=>`${S.me.id}/${x.name}`))}
   const r=await db.rpc('delete_my_account');if(r.error)return toast('Silinemedi: '+r.error.message);
   await db.auth.signOut();S.me=null;authView();toast('Hesabın silindi.')}
+ else if(a==='ntopen')ntopen(id);
+ else if(a==='ntall'){await db.from('notifications').update({read:true}).eq('user_id',S.me.id).eq('read',false);load()}
+ else if(a==='pushon')pushOn();
+ else if(a==='pushoff')pushOff();
  else if(a==='aiclose'){S.ai=null;render()}
  else if(a==='analyze')analyze();
  else if(a==='aidel'){S.ai.res.items.splice(+id,1);render()}
@@ -362,7 +372,7 @@ async function shrink(f,mx=1024){
  const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.7));
  const b64=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result.split(',')[1]);fr.readAsDataURL(blob)});
  return{blob,b64,orig:f,url:URL.createObjectURL(blob)}}
-const VER='v8';
+const VER='v9';
 const mm=x=>{const f=v=>Math.round(x.grams*(+v||0)/100);return 'protein '+f(x.protein_per_100g)+' g, karb. '+f(x.carbs_per_100g)+' g, yağ '+f(x.fat_per_100g)+' g'};
 const im=x=>Math.round(x.grams*(+x.kcal_per_100g||0)/100)+' kcal, '+mm(x);
 function tot(){const it=S.ai.res.items,s=k=>it.reduce((a,x)=>a+x.grams*(+x[k]||0)/100,0);return{kcal:s('kcal_per_100g'),p:s('protein_per_100g'),c:s('carbs_per_100g'),f:s('fat_per_100g')}}
@@ -503,7 +513,7 @@ async function cleanupPhotos(){
  try{const a=new Date();a.setDate(a.getDate()-60);
   const{data}=await db.from('meals').select('id,photo_path').eq('user_id',S.me.id).not('photo_path','is',null).lt('eaten_at',a.toISOString()).limit(100);
   if(data?.length){const r=await db.storage.from('meal-photos').remove(data.map(x=>x.photo_path));if(!r.error)await db.from('meals').update({photo_path:null}).in('id',data.map(x=>x.id))}
-  localStorage.setItem('clean',today)}catch{}}
+  const o=new Date();o.setDate(o.getDate()-30);await db.from('notifications').delete().eq('user_id',S.me.id).lt('created_at',o.toISOString());localStorage.setItem('clean',today)}catch{}}
 function remindView(){
  if(S.day.toDateString()!==new Date().toDateString()||localStorage.getItem('rem_off')==='1')return'';
  const h=new Date().getHours();let o='';
@@ -531,6 +541,33 @@ async function askWeek(){
  if(!data||data.error||!data.comment){S.wkAI=null;toast(data?.error||'Yorum alınamadı. Fonksiyonu güncellediğinden emin ol.');return render()}
  S.wkAI={res:data};render()}
 app.addEventListener('change',e=>{if(e.target.matches('[data-rem]')){try{localStorage.setItem('rem_off',e.target.checked?'0':'1')}catch{}}});
+/* ---------- v9: bildirimler ---------- */
+const ago=t=>{const m=Math.round((Date.now()-new Date(t))/6e4);return m<1?'şimdi':m<60?m+' dk önce':m<1440?Math.round(m/60)+' sa önce':Math.round(m/1440)+' gün önce'};
+const ntText=n=>{const w=S.names[n.actor_id]||S.pr[n.actor_id]?.username||'Biri';
+ return n.type==='reaction'?`${w} öğününe ${n.text} bıraktı`:n.type==='comment'?`${w} not yazdı: ${n.text}`:`${w} bir öğün ekledi: ${n.text}`};
+function notifView(){
+ const l=S.nt||[];
+ return`<h1 style="margin:6px 0 14px">Bildirimler</h1>${l.some(x=>!x.read)?`<button class="btn ghost sm" style="margin-bottom:10px" data-act="ntall">Hepsini okundu yap</button>`:''}
+ ${l.length?`<div class="card" style="padding:4px 16px"><ul>${l.map(n=>`<li class="m tap" data-act="ntopen" data-id="${n.id}">${avatar(n.actor_id,40)}<div><b style="${n.read?'font-weight:500':''}">${esc(ntText(n))}</b><small>${ago(n.created_at)}</small></div>${n.read?'':'<span class="newb">●</span>'}<span class="mute">›</span></li>`).join('')}</ul></div>`:'<div class="empty">Henüz bildirim yok.</div>'}`}
+async function ntopen(id){
+ const n=S.nt.find(x=>x.id===id);if(!n)return;
+ if(!n.read){n.read=true;db.from('notifications').update({read:true}).eq('id',id).then(()=>{})}
+ const{data:m}=n.meal_id?await db.from('meals').select('*').eq('id',n.meal_id).maybeSingle():{};
+ if(!m){toast('Bu öğün artık yok.');return render()}
+ if(m.photo_path&&!S.urls[m.photo_path]){const{data:u}=await db.storage.from('meal-photos').createSignedUrl(m.photo_path,3600);if(u?.signedUrl)S.urls[m.photo_path]=u.signedUrl}
+ S.detail=m;S.rx=null;S.pb=null;render();loadRx(m.id);prefetchPhoto(m)}
+const urlB64=s=>{const r=atob((s+'='.repeat((4-s.length%4)%4)).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(r,c=>c.charCodeAt(0))};
+async function pushOn(){
+ if(typeof VAPID_PUBLIC==='undefined'||!VAPID_PUBLIC)return toast('config.js içinde VAPID_PUBLIC satırı yok.');
+ if(!('PushManager' in window)||!('Notification' in window))return toast('Önce uygulamayı ana ekrana ekle ve oradan aç (iOS 16.4 ve üstü).');
+ try{if(await Notification.requestPermission()!=='granted')return toast('Bildirim izni verilmedi. iPhone Ayarlar > Bildirimler > Kalori üzerinden açabilirsin.');
+  const reg=await navigator.serviceWorker.ready;
+  const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64(VAPID_PUBLIC)}),j=sub.toJSON();
+  const r=await db.from('push_subscriptions').upsert({user_id:S.me.id,endpoint:j.endpoint,p256dh:j.keys.p256dh,auth:j.keys.auth},{onConflict:'endpoint'});
+  toast(r.error?trErr(r.error.message):'Bildirimler açıldı.')}catch(e){toast('Bildirim açılamadı: '+(e.message||e))}}
+async function pushOff(){
+ try{const sub=await(await navigator.serviceWorker.ready).pushManager.getSubscription();
+  if(sub){await db.from('push_subscriptions').delete().eq('endpoint',sub.endpoint);await sub.unsubscribe()}toast('Bildirimler kapatıldı.')}catch{toast('Kapatılamadı.')}}
 let refreshing=false;
 async function refresh(){
  if(!S.me||refreshing||document.hidden||S.sheet||S.bc||S.ai||S.detail||S.zoom||/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName||''))return;

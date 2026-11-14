@@ -1,0 +1,13 @@
+<!doctype html><html lang="tr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bildirim anahtarı üret</title>
+<body style="font:16px/1.5 system-ui;max-width:640px;margin:30px auto;padding:0 16px">
+<h1>Bildirim anahtarları (VAPID)</h1>
+<p>Bu sayfa anahtarları sadece bu bilgisayarda üretir, hiçbir yere göndermez. Bu dosyayı GitHub'a yükleme.</p>
+<button id="b" style="font:inherit;padding:10px 18px">Anahtar üret</button>
+<pre id="o" style="white-space:pre-wrap;word-break:break-all;margin-top:20px"></pre>
+<script>
+const b64=u=>btoa(String.fromCharCode(...new Uint8Array(u))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+b.onclick=async()=>{const k=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign']);
+ const pub=await crypto.subtle.exportKey('raw',k.publicKey),jwk=await crypto.subtle.exportKey('jwk',k.privateKey);
+ o.textContent='VAPID_PUBLIC (config.js içine ve Supabase Secrets):\n'+b64(pub)+'\n\nVAPID_PRIVATE (SADECE Supabase Secrets, kimseyle paylaşma):\n'+jwk.d};
+</script></body></html>
