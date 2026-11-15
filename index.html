@@ -219,7 +219,7 @@ function profileView(){
  <label>Aktivite</label>${sel('act',[['sedentary','Hareketsiz (masa başı)'],['light','Hafif (haftada 1-3 spor)'],['moderate','Orta (haftada 3-5 spor)'],['high','Çok aktif (her gün)']],b.activity||'light')}
  <label>Amacın</label>${sel('goal',[['lose','Kilo vermek'],['maintain','Kiloyu korumak'],['gain','Kilo almak']],b.goal||'maintain')}
  <button class="btn">Hesapla ve kaydet</button></form></div>
- <h2>Telefon bildirimleri</h2><small class="mute">Arkadaşın öğün eklediğinde, not ya da tepki bıraktığında uygulama kapalıyken de haber alırsın. Uygulamanın ana ekrana eklenmiş olması gerekir.</small><div class="row" style="margin:8px 0"><button class="btn sm" data-act="pushon">Aç</button><button class="btn ghost sm" data-act="pushoff">Kapat</button></div>
+ <h2>Telefon bildirimleri</h2><small class="mute">Arkadaşın öğün eklediğinde, not ya da tepki bıraktığında uygulama kapalıyken de haber alırsın. Uygulamanın ana ekrana eklenmiş olması gerekir.</small><div class="row" style="margin:8px 0"><button class="btn sm" data-act="pushon">Aç</button><button class="btn ghost sm" data-act="pushoff">Kapat</button><button class="btn ghost sm" data-act="pushtest">Test et</button></div>
  <h2>Görünüm</h2><div class="seg">${[['auto','Otomatik'],['light','Açık'],['dark','Koyu']].map(([k,t])=>`<button class="${(localStorage.getItem('theme')||'auto')===k?'on':''}" data-act="theme" data-id="${k}">${t}</button>`).join('')}</div>
  <label class="chk"><input type="checkbox" data-rem ${localStorage.getItem('rem_off')==='1'?'':'checked'}> Hatırlatıcıları göster (öğün eklemediysen, pazar günü haftalık özet)</label>
  <h2>Hesap</h2><button class="btn ghost" data-act="csv">Tüm öğünleri CSV olarak indir</button><button class="link" style="color:var(--over)" data-act="logout">Çıkış yap</button><button class="link" style="color:var(--over);font-weight:500" data-act="delacc">Hesabımı ve verilerimi sil</button><small class="mute" style="display:block;text-align:center;margin-top:18px">Sürüm ${VER}</small>`}
@@ -308,6 +308,7 @@ app.addEventListener('click',async e=>{
  else if(a==='ntall'){await db.from('notifications').update({read:true}).eq('user_id',S.me.id).eq('read',false);load()}
  else if(a==='pushon')pushOn();
  else if(a==='pushoff')pushOff();
+ else if(a==='pushtest')pushTest();
  else if(a==='aiclose'){S.ai=null;render()}
  else if(a==='analyze')analyze();
  else if(a==='aidel'){S.ai.res.items.splice(+id,1);render()}
@@ -372,7 +373,7 @@ async function shrink(f,mx=1024){
  const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.7));
  const b64=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result.split(',')[1]);fr.readAsDataURL(blob)});
  return{blob,b64,orig:f,url:URL.createObjectURL(blob)}}
-const VER='v9';
+const VER='v11';
 const mm=x=>{const f=v=>Math.round(x.grams*(+v||0)/100);return 'protein '+f(x.protein_per_100g)+' g, karb. '+f(x.carbs_per_100g)+' g, yağ '+f(x.fat_per_100g)+' g'};
 const im=x=>Math.round(x.grams*(+x.kcal_per_100g||0)/100)+' kcal, '+mm(x);
 function tot(){const it=S.ai.res.items,s=k=>it.reduce((a,x)=>a+x.grams*(+x[k]||0)/100,0);return{kcal:s('kcal_per_100g'),p:s('protein_per_100g'),c:s('carbs_per_100g'),f:s('fat_per_100g')}}
@@ -568,12 +569,18 @@ async function pushOn(){
 async function pushOff(){
  try{const sub=await(await navigator.serviceWorker.ready).pushManager.getSubscription();
   if(sub){await db.from('push_subscriptions').delete().eq('endpoint',sub.endpoint);await sub.unsubscribe()}toast('Bildirimler kapatıldı.')}catch{toast('Kapatılamadı.')}}
+async function pushTest(){
+ if(!('Notification' in window))return toast('Bu cihazda bildirim desteği yok. Ana ekran simgesinden açtığından emin ol.');
+ const reg=await navigator.serviceWorker.ready,sub=await reg.pushManager.getSubscription();
+ const host=sub?new URL(sub.endpoint).host:'YOK';
+ toast('İzin: '+Notification.permission+' | abonelik: '+host+' | 6 sn içinde ana ekrana çık');
+ if(Notification.permission==='granted')setTimeout(()=>reg.showNotification('Kalori',{body:'Test bildirimi çalışıyor',icon:'icon-180.png'}),6000)}
 let refreshing=false;
 async function refresh(){
  if(!S.me||refreshing||document.hidden||S.sheet||S.bc||S.ai||S.detail||S.zoom||/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName||''))return;
  refreshing=true;try{await load()}catch{}finally{refreshing=false}}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()});
 setInterval(refresh,30000);
-if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).catch(()=>{});
 boot();
 </script></body></html>
