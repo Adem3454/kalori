@@ -80,6 +80,7 @@ select{color:var(--ink)}
 .sbar{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 134px);max-width:456px;margin:auto;background:var(--ink);color:var(--bg);padding:10px 12px;border-radius:14px;display:flex;gap:10px;align-items:center;z-index:8;font-size:14px}
 .sbar .x{color:var(--bg)}
 nav button{font-size:14px}
+input[type=time]{width:100%;padding:13px 14px;border:1.5px solid var(--line);border-radius:12px;background:var(--card);margin:4px 0 12px;color:var(--ink)}
 </style></head>
 <body><div id="app"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
@@ -128,6 +129,7 @@ async function boot(){
  const{data:p}=await db.from('profiles').select('*').eq('id',S.me.id).single();
  if(!p){await db.auth.signOut();return authView()}
  S.p=p;{const{data:bi}=await db.from('body_info').select('*').maybeSingle();S.body=bi}
+ {const{data:np}=await db.from('notif_prefs').select('*').maybeSingle();S.np=np}
  await cleanupPhotos();
  await load()}
 
@@ -202,8 +204,8 @@ function detailView(){
  return`<div class="ov" data-act="dclose"><div class="sheet" data-stop><div class="row sp"><div><h1 style="font-size:22px">${esc(m.name)}</h1><small>${own?'':esc(S.names[m.user_id]||'')+', '}${new Date(m.eaten_at).toLocaleString('tr-TR',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'})}</small></div><button class="x" data-act="dclose" aria-label="Kapat">×</button></div>
  ${u?`<img class="hero" src="${u}" alt="Yemek fotoğrafı" data-act="zoom" data-id="${m.id}"><small class="mute">Büyütmek için fotoğrafa dokun. Fotoğraflar 60 gün sonra uygulamadan silinir.</small>${S.pb?.id===m.id?`<button class="btn ghost sm" style="display:block;margin-top:8px" data-act="dphone">Telefona kaydet</button>`:''}`:''}
  <div class="card" style="margin-top:10px"><div class="big">${m.kcal}<small> kcal</small></div><div class="macros"><div><b>${+m.protein||0} g</b><small>protein</small></div><div><b>${+m.carbs||0} g</b><small>karbonhidrat</small></div><div><b>${+m.fat||0} g</b><small>yağ</small></div></div></div>
- ${it.length?`<h2>İçindekiler</h2><div class="card" style="padding:4px 16px">${it.map(x=>`<div class="it"><div><b>${esc(x.name)}</b><small>${Math.round(x.grams)} g, ${mm(x)}</small></div><span class="k">${Math.round(x.grams*x.kcal_per_100g/100)} kcal</span></div>`).join('')}</div>`:''}
- ${rxView(m)}${own?`<button class="link" style="color:var(--over)" data-act="del" data-id="${m.id}">Öğünü sil</button>`:''}</div></div>`}
+ ${m.ai_items?`<small class="mute" style="display:block;margin-top:8px">Yapay zekanın ilk tahmini: ${Math.round(totOf(m.ai_items).kcal)} kcal${m.edited_at?' (sonra düzenlendi)':''}</small>`:''}${it.length?`<h2>İçindekiler</h2><div class="card" style="padding:4px 16px">${it.map(x=>`<div class="it"><div><b>${esc(x.name)}</b><small>${Math.round(x.grams)} g, ${mm(x)}</small></div><span class="k">${Math.round(x.grams*x.kcal_per_100g/100)} kcal</span></div>`).join('')}</div>`:''}
+ ${rxView(m)}${own?`<div class="row" style="margin-top:12px"><button class="btn sm" data-act="edit">Düzenle</button><button class="btn ghost sm" style="color:var(--over);border-color:var(--over)" data-act="del" data-id="${m.id}">Sil</button></div>`:''}</div></div>`}
 const zoomView=()=>`<div class="zoom" data-act="zclose"><button class="x" style="position:absolute;top:calc(env(safe-area-inset-top) + 10px);right:10px;color:#fff;font-size:36px" data-act="zclose" aria-label="Kapat">×</button><img src="${S.zoom}" alt=""></div>`;
 function calcGoal(b){const age=new Date().getFullYear()-b.birth_year,bmr=10*b.weight_kg+6.25*b.height_cm-5*age+(b.sex==='m'?5:-161);
  const act={sedentary:1.2,light:1.375,moderate:1.55,high:1.725}[b.activity]||1.375,adj={lose:.85,maintain:1,gain:1.1}[b.goal]||1;
@@ -220,7 +222,7 @@ function profileView(){
  <label>Amacın</label>${sel('goal',[['lose','Kilo vermek'],['maintain','Kiloyu korumak'],['gain','Kilo almak']],b.goal||'maintain')}
  <button class="btn">Hesapla ve kaydet</button></form></div>
  <h2>Telefon bildirimleri</h2><small class="mute">Arkadaşın öğün eklediğinde, not ya da tepki bıraktığında uygulama kapalıyken de haber alırsın. Uygulamanın ana ekrana eklenmiş olması gerekir.</small><div class="row" style="margin:8px 0"><button class="btn sm" data-act="pushon">Aç</button><button class="btn ghost sm" data-act="pushoff">Kapat</button><button class="btn ghost sm" data-act="pushtest">Test et</button></div>
- <h2>Görünüm</h2><div class="seg">${[['auto','Otomatik'],['light','Açık'],['dark','Koyu']].map(([k,t])=>`<button class="${(localStorage.getItem('theme')||'auto')===k?'on':''}" data-act="theme" data-id="${k}">${t}</button>`).join('')}</div>
+ ${npView()}<h2>Görünüm</h2><div class="seg">${[['auto','Otomatik'],['light','Açık'],['dark','Koyu']].map(([k,t])=>`<button class="${(localStorage.getItem('theme')||'auto')===k?'on':''}" data-act="theme" data-id="${k}">${t}</button>`).join('')}</div>
  <label class="chk"><input type="checkbox" data-rem ${localStorage.getItem('rem_off')==='1'?'':'checked'}> Hatırlatıcıları göster (öğün eklemediysen, pazar günü haftalık özet)</label>
  <h2>Hesap</h2><button class="btn ghost" data-act="csv">Tüm öğünleri CSV olarak indir</button><button class="link" style="color:var(--over)" data-act="logout">Çıkış yap</button><button class="link" style="color:var(--over);font-weight:500" data-act="delacc">Hesabımı ve verilerimi sil</button><small class="mute" style="display:block;text-align:center;margin-top:18px">Sürüm ${VER}</small>`}
 async function loadReport(){
@@ -258,7 +260,7 @@ function sheetView(){
 function render(){
  const v=S.tab==='today'?todayView():S.tab==='friends'?friendsView():S.tab==='report'?reportView():S.tab==='notif'?notifView():profileView();
  const pend=S.fr.filter(x=>x.status==='pending'&&x.addressee===S.me.id).length;
- app.innerHTML=v+`<nav><div>${[['today','Bugün'],['friends','Arkadaşlar'+(pend?` (${pend})`:'')],['report','Rapor'],['notif','Bildirim'+((S.nt||[]).some(x=>!x.read)?` (${S.nt.filter(x=>!x.read).length})`:'')],['settings','Profil']].map(([k,t])=>`<button data-act="tab" data-id="${k}" class="${S.tab===k?'on':''}">${t}</button>`).join('')}</div></nav>`+(S.sheet?sheetView():'')+(S.ai?aiView():'')+(S.detail?detailView():'')+(S.zoom?zoomView():'')+(S.bc?bcView():'')+(S.saved?savedBarView():'')}
+ app.innerHTML=v+`<nav><div>${[['today','Bugün'],['friends','Arkadaşlar'+(pend?` (${pend})`:'')],['report','Rapor'],['notif','Bildirim'+((S.nt||[]).some(x=>!x.read)?` (${S.nt.filter(x=>!x.read).length})`:'')],['settings','Profil']].map(([k,t])=>`<button data-act="tab" data-id="${k}" class="${S.tab===k?'on':''}">${t}</button>`).join('')}</div></nav>`+(S.sheet?sheetView():'')+(S.ai?aiView():'')+(S.detail?detailView():'')+(S.zoom?zoomView():'')+(S.bc?bcView():'')+(S.saved?savedBarView():'')+(S.ed?editView():'')}
 
 /* ---------- Olaylar ---------- */
 const shift=n=>{S.day=new Date(S.day);S.day.setDate(S.day.getDate()+n);load()};
@@ -304,6 +306,12 @@ app.addEventListener('click',async e=>{
   for(const b of['meal-photos','avatars']){const{data}=await db.storage.from(b).list(S.me.id,{limit:1000});if(data?.length)await db.storage.from(b).remove(data.map(x=>`${S.me.id}/${x.name}`))}
   const r=await db.rpc('delete_my_account');if(r.error)return toast('Silinemedi: '+r.error.message);
   await db.auth.signOut();S.me=null;authView();toast('Hesabın silindi.')}
+ else if(a==='edit'){const m=S.detail,d=new Date(m.eaten_at);
+  S.ed={id:m.id,name:m.name,mt:m.meal_type||defType(),shared:m.shared,time:d.toTimeString().slice(0,5),kcal:m.kcal,protein:m.protein,carbs:m.carbs,fat:m.fat,day:m.eaten_at,items:Array.isArray(m.items)&&m.items.length?JSON.parse(JSON.stringify(m.items)):null};
+  S.detail=null;render()}
+ else if(a==='edclose'){S.ed=null;render()}
+ else if(a==='edel'){readEd();S.ed.items.splice(+id,1);render()}
+ else if(a==='edadd'){readEd();S.ed.items.push({...PRE[+id]});render()}
  else if(a==='ntopen')ntopen(id);
  else if(a==='ntall'){await db.from('notifications').update({read:true}).eq('user_id',S.me.id).eq('read',false);load()}
  else if(a==='pushon')pushOn();
@@ -340,6 +348,13 @@ app.addEventListener('submit',async e=>{
   const r=await db.from('friendships').insert({addressee:p.id});
   if(r.error)return toast(trErr(r.error.message));
   toast('İstek gönderildi.');load()}
+ if(k==='edit'){const e=S.ed,row={name:f.get('name').trim(),meal_type:f.get('mt'),shared:f.get('shared')==='on',edited_at:new Date().toISOString()};
+  const d=new Date(e.day),[h,mi]=f.get('tm').split(':');d.setHours(+h,+mi);row.eaten_at=d.toISOString();
+  if(e.items){const it=e.items.filter(x=>x.grams>0),t=totOf(it);Object.assign(row,{items:it,kcal:Math.round(t.kcal),protein:Math.round(t.p),carbs:Math.round(t.c),fat:Math.round(t.f)})}
+  else{const n=x=>f.get(x)===''?null:+f.get(x);Object.assign(row,{kcal:Math.round(+f.get('kcal')),protein:n('protein'),carbs:n('carbs'),fat:n('fat')})}
+  const r=await db.from('meals').update(row).eq('id',e.id);
+  if(r.error)return toast(trErr(r.error.message));
+  S.ed=null;S.stT=0;toast('Öğün güncellendi.');return load()}
  if(k==='note'){const t=(f.get('t')||'').trim();if(!t)return;const r=await db.from('comments').insert({meal_id:S.detail.id,body:t.slice(0,200)});if(r.error)return toast(trErr(r.error.message));loadRx(S.detail.id);return}
  if(k==='bc'){const c=(f.get('code')||'').trim();if(!c)return;await stopScan();return lookup(c)}
  if(k==='weight'){const kg=+f.get('kg'),r=await db.from('weights').upsert({user_id:S.me.id,day:dkey(new Date()),kg},{onConflict:'user_id,day'});
@@ -373,7 +388,7 @@ async function shrink(f,mx=1024){
  const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.7));
  const b64=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result.split(',')[1]);fr.readAsDataURL(blob)});
  return{blob,b64,orig:f,url:URL.createObjectURL(blob)}}
-const VER='v11';
+const VER='v12';
 const mm=x=>{const f=v=>Math.round(x.grams*(+v||0)/100);return 'protein '+f(x.protein_per_100g)+' g, karb. '+f(x.carbs_per_100g)+' g, yağ '+f(x.fat_per_100g)+' g'};
 const im=x=>Math.round(x.grams*(+x.kcal_per_100g||0)/100)+' kcal, '+mm(x);
 function tot(){const it=S.ai.res.items,s=k=>it.reduce((a,x)=>a+x.grams*(+x[k]||0)/100,0);return{kcal:s('kcal_per_100g'),p:s('protein_per_100g'),c:s('carbs_per_100g'),f:s('fat_per_100g')}}
@@ -401,7 +416,7 @@ async function analyze(){
  a.busy=false;
  if(error||!data||data.error||!Array.isArray(data.items)){toast(data?.error||'Analiz yapılamadı. Bağlantını ve kurulumu kontrol et.');return render()}
  data.items=data.items.map(x=>({...x,grams:Math.max(0,+x.grams||0),kcal_per_100g:+x.kcal_per_100g||0}));
- a.res=data;render()}
+ a.orig=JSON.parse(JSON.stringify(data.items));a.res=data;render()}
 async function saveAI(){
  const a=S.ai,r=a.res,it=r.items.filter(x=>x.grams>0),t=tot(),p=a.photos[0];
  const sh=document.querySelector('[name=sh]').checked;
@@ -409,7 +424,7 @@ async function saveAI(){
  const u=p?await db.storage.from('meal-photos').upload(path,p.blob,{contentType:'image/jpeg'}):{};
  if(u.error){path=null;toast('Fotoğraf yüklenemedi, öğün fotoğrafsız kaydedildi.')}
  const d=new Date(S.day),n=new Date();d.setHours(n.getHours(),n.getMinutes());
- const e=await db.from('meals').insert({name:(r.name||it.map(x=>x.name).join(', ')).slice(0,80),kcal:Math.round(t.kcal),protein:Math.round(t.p),carbs:Math.round(t.c),fat:Math.round(t.f),eaten_at:d.toISOString(),shared:sh,photo_path:path,items:it,meal_type:document.querySelector('[name=mt]').value});
+ const e=await db.from('meals').insert({name:(r.name||it.map(x=>x.name).join(', ')).slice(0,80),kcal:Math.round(t.kcal),protein:Math.round(t.p),carbs:Math.round(t.c),fat:Math.round(t.f),eaten_at:d.toISOString(),shared:sh,photo_path:path,items:it,meal_type:document.querySelector('[name=mt]').value,ai_items:a.orig||null,ai_model:r.model||null});
  if(e.error)return toast(trErr(e.error.message));
  S.ai=null;S.stT=0;toast('Öğün kaydedildi.');if(p){const sv={f:p.orig};S.saved=sv;setTimeout(()=>{if(S.saved===sv){S.saved=null;render()}},25000)}load()}
 app.addEventListener('change',async e=>{
@@ -575,9 +590,39 @@ async function pushTest(){
  const host=sub?new URL(sub.endpoint).host:'YOK';
  toast('İzin: '+Notification.permission+' | abonelik: '+host+' | 6 sn içinde ana ekrana çık');
  if(Notification.permission==='granted')setTimeout(()=>reg.showNotification('Kalori',{body:'Test bildirimi çalışıyor',icon:'icon-180.png'}),6000)}
+/* ---------- v12: öğün düzenleme ve bildirim ayarları ---------- */
+const totOf=it=>{const s=k=>it.reduce((a,x)=>a+x.grams*(+x[k]||0)/100,0);return{kcal:s('kcal_per_100g'),p:s('protein_per_100g'),c:s('carbs_per_100g'),f:s('fat_per_100g')}};
+function editView(){
+ const e=S.ed,it=e.items,t=it?totOf(it):null,num=(n,v,st)=>`<input type="number" name="${n}" min="0" ${st?'step="any" inputmode="decimal"':'inputmode="numeric"'} value="${v??''}">`;
+ return`<div class="ov"><div class="sheet"><div class="row sp"><h1 style="font-size:22px">Öğünü düzenle</h1><button class="x" data-act="edclose" aria-label="Kapat">×</button></div>
+ <form data-form="edit" style="margin-top:12px"><label>Ad</label><input type="text" name="name" required maxlength="80" value="${esc(e.name)}">
+ <div class="row" style="align-items:flex-start"><div style="flex:1"><label>Öğün</label>${typeSel(e.mt)}</div><div style="flex:1"><label>Saat</label><input type="time" name="tm" required value="${e.time}"></div></div>
+ ${it?`<h2 style="margin-top:4px">Gramları düzelt</h2>${it.map((x,i)=>`<div class="it"><div><b>${esc(x.name)}</b><small id="ek${i}">${im(x)}</small></div><div class="row"><input type="number" inputmode="decimal" data-eg="${i}" value="${Math.round(x.grams)}" min="0" style="margin:0;width:78px" aria-label="gram"><button type="button" class="x" data-act="edel" data-id="${i}" aria-label="Kaldır">×</button></div></div>`).join('')}
+  <div class="row" style="flex-wrap:wrap;margin:10px 0"><small class="mute">Ekle:</small>${PRE.map((p,i)=>`<button type="button" class="btn ghost sm" data-act="edadd" data-id="${i}">${p.name}</button>`).join('')}</div>
+  <div class="card" style="margin-bottom:12px"><div class="big" id="etk">${Math.round(t.kcal)} kcal</div><small id="etm">protein ${Math.round(t.p)} g, karb. ${Math.round(t.c)} g, yağ ${Math.round(t.f)} g</small></div>`
+ :`<label>Kalori (kcal)</label><input type="number" name="kcal" required min="0" max="5000" inputmode="numeric" value="${e.kcal}"><div class="g3"><div><label>Protein g</label>${num('protein',e.protein,1)}</div><div><label>Karb. g</label>${num('carbs',e.carbs,1)}</div><div><label>Yağ g</label>${num('fat',e.fat,1)}</div></div>`}
+ <label class="chk"><input type="checkbox" name="shared" ${e.shared?'checked':''}> Arkadaşlarım görebilsin</label><button class="btn">Kaydet</button></form></div></div>`}
+function readEd(){const f=document.querySelector('[data-form=edit]');if(!f||!S.ed)return;const g=n=>f.elements[n];S.ed.name=g('name').value;S.ed.mt=g('mt').value;S.ed.time=g('tm').value;S.ed.shared=g('shared').checked}
+function edRecalc(){const e=S.ed,t=totOf(e.items);
+ e.items.forEach((x,i)=>{const el=document.getElementById('ek'+i);if(el)el.textContent=im(x)});
+ document.getElementById('etk').textContent=Math.round(t.kcal)+' kcal';
+ document.getElementById('etm').textContent='protein '+Math.round(t.p)+' g, karb. '+Math.round(t.c)+' g, yağ '+Math.round(t.f)+' g'}
+app.addEventListener('input',e=>{const t=e.target;if(t.dataset.eg!==undefined&&S.ed?.items){S.ed.items[+t.dataset.eg].grams=Math.max(0,+t.value||0);edRecalc()}});
+function npView(){
+ const p={meals:true,reactions:true,comments:true,muted:[],...S.np},fr=S.fr.filter(x=>x.status==='accepted').map(x=>x.requester===S.me.id?x.addressee:x.requester);
+ return`<h2>Bildirim ayarları</h2><label class="chk"><input type="checkbox" data-np="meals" ${p.meals?'checked':''}> Arkadaşım öğün eklediğinde</label>
+ <label class="chk"><input type="checkbox" data-np="reactions" ${p.reactions?'checked':''}> Öğünüme tepki bıraktığında</label>
+ <label class="chk"><input type="checkbox" data-np="comments" ${p.comments?'checked':''}> Not yazıldığında</label>
+ ${fr.length?`<small class="mute">Sessize al (o kişiden hiç bildirim gelmez):</small>${fr.map(id=>`<label class="chk"><input type="checkbox" data-mute="${id}" ${p.muted.includes(id)?'checked':''}> ${esc(S.names[id]||'?')}</label>`).join('')}`:''}`}
+app.addEventListener('change',async e=>{
+ const t=e.target;if(!t.matches('[data-np],[data-mute]'))return;
+ const p=S.np={meals:true,reactions:true,comments:true,muted:[],...S.np};
+ if(t.dataset.np)p[t.dataset.np]=t.checked;else p.muted=t.checked?[...new Set([...p.muted,t.dataset.mute])]:p.muted.filter(x=>x!==t.dataset.mute);
+ const r=await db.from('notif_prefs').upsert({user_id:S.me.id,meals:p.meals,reactions:p.reactions,comments:p.comments,muted:p.muted});
+ toast(r.error?trErr(r.error.message):'Kaydedildi.')});
 let refreshing=false;
 async function refresh(){
- if(!S.me||refreshing||document.hidden||S.sheet||S.bc||S.ai||S.detail||S.zoom||/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName||''))return;
+ if(!S.me||refreshing||document.hidden||S.sheet||S.bc||S.ed||S.ai||S.detail||S.zoom||/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName||''))return;
  refreshing=true;try{await load()}catch{}finally{refreshing=false}}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()});
 setInterval(refresh,30000);
