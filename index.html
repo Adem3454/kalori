@@ -237,7 +237,8 @@ function profileView(){
  <h2>Bilgilerin</h2><div class="card"><form data-form="body"><label>Cinsiyet</label>${sel('sex',[['f','Kadın'],['m','Erkek']],b.sex)}
  <div class="g3"><div><label>Doğum yılı</label><input type="number" name="by" required min="1930" max="2008" inputmode="numeric" value="${b.birth_year||''}"></div><div><label>Boy (cm)</label><input type="number" name="h" required min="120" max="230" inputmode="numeric" value="${b.height_cm||''}"></div><div><label>Kilo (kg)</label><input type="number" name="w" required min="30" max="300" step="any" inputmode="decimal" value="${b.weight_kg||''}"></div></div>
  <label>Haftada kaç gün spor yapıyorsun?</label>${sel('wk',[0,1,2,3,4,5,6,7].map(n=>[String(n),n===0?'Hiç':n===7?'Her gün':n+' gün']),String(b.workouts??({sedentary:0,light:2,moderate:4,high:6}[b.activity]??2)))}
- <label>Amacın</label>${sel('goal',[['lose','Kilo vermek'],['maintain','Kiloyu korumak'],['gain','Kilo almak']],b.goal||'maintain')}
+ <label>Ağırlık antrenmanı yapıyor musun?</label>${sel('lifts',[['1','Evet (salon, dambıl, direnç)'],['0','Hayır']],b.lifts?'1':'0')}
+ <label>Amacın</label>${sel('goal',[['lose','Kilo vermek'],['maintain','Kiloyu korumak'],['muscle','Kas kazanmak (yağlanmadan)'],['gain','Kilo almak']],b.goal||'maintain')}
  <button class="btn">Hesapla ve kaydet</button></form></div>
  <h2>Telefon bildirimleri</h2><small class="mute">Arkadaşın öğün eklediğinde, not ya da tepki bıraktığında uygulama kapalıyken de haber alırsın. Uygulamanın ana ekrana eklenmiş olması gerekir.</small><div class="row" style="margin:8px 0"><button class="btn sm" data-act="pushon">Aç</button><button class="btn ghost sm" data-act="pushoff">Kapat</button><button class="btn ghost sm" data-act="pushtest">Test et</button></div>
  ${npView()}<h2>Görünüm</h2><div class="seg">${[['auto','Otomatik'],['light','Açık'],['dark','Koyu']].map(([k,t])=>`<button class="${(localStorage.getItem('theme')||'auto')===k?'on':''}" data-act="theme" data-id="${k}">${t}</button>`).join('')}</div>
@@ -389,7 +390,7 @@ app.addEventListener('submit',async e=>{
    if(g!==S.p.daily_goal){await db.from('profiles').update({daily_goal:g}).eq('id',S.me.id);S.p.daily_goal=g;msg+=' Yeni hedefin '+g+' kcal.'}}
   toast(msg);return loadReport()}
  if(k==='body'){
-  const b={sex:f.get('sex'),birth_year:+f.get('by'),height_cm:+f.get('h'),weight_kg:+f.get('w'),workouts:+f.get('wk'),goal:f.get('goal')};
+  const b={sex:f.get('sex'),birth_year:+f.get('by'),height_cm:+f.get('h'),weight_kg:+f.get('w'),workouts:+f.get('wk'),lifts:f.get('lifts')==='1',goal:f.get('goal')};
   if(new Date().getFullYear()-b.birth_year<18)return toast('Bu hesaplama 18 yaş ve üzeri içindir.');
   const g=calcGoal(b),r1=await db.from('body_info').upsert({id:S.me.id,...b});if(r1.error)return toast(trErr(r1.error.message));
   const r2=await db.from('profiles').update({daily_goal:g}).eq('id',S.me.id);if(r2.error)return toast(trErr(r2.error.message));
@@ -412,7 +413,7 @@ async function shrink(f,mx=1024){
  const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.7));
  const b64=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result.split(',')[1]);fr.readAsDataURL(blob)});
  return{blob,b64,orig:f,url:URL.createObjectURL(blob)}}
-const VER='v14';
+const VER='v15';
 const mm=x=>{const f=v=>Math.round(x.grams*(+v||0)/100);return dt('cp')+'protein '+f(x.protein_per_100g)+' g '+dt('cc')+'karb. '+f(x.carbs_per_100g)+' g '+dt('cf')+'yağ '+f(x.fat_per_100g)+' g'};
 const im=x=>Math.round(x.grams*(+x.kcal_per_100g||0)/100)+' kcal, '+mm(x);
 function tot(){const it=S.ai.res.items,s=k=>it.reduce((a,x)=>a+x.grams*(+x[k]||0)/100,0);return{kcal:s('kcal_per_100g'),p:s('protein_per_100g'),c:s('carbs_per_100g'),f:s('fat_per_100g')}}
@@ -694,29 +695,32 @@ app.addEventListener('input',e=>{const t=e.target;if(!t.matches('[data-q]'))retu
  qt=setTimeout(()=>searchFoods(q),500)});
 /* ---------- v14: kalori ve makro hedefi ---------- */
 function calcPlan(b){
- const age=new Date().getFullYear()-b.birth_year,w=+b.weight_kg,h=+b.height_cm,m=b.sex==='m';
+ const age=new Date().getFullYear()-b.birth_year,w=+b.weight_kg,h=+b.height_cm,m=b.sex==='m',lifts=!!b.lifts;
  const bmr=10*w+6.25*h-5*age+(m?5:-161);
  const wk=b.workouts??({sedentary:0,light:2,moderate:4,high:6}[b.activity]??2);
  const tdee=bmr*(1.2+.05*Math.min(wk,7)),bmi=w/((h/100)**2);
- let goal=b.goal,note='';
- if(goal==='lose'&&bmi<18.5){goal='maintain';note='Kilo indeksin düşük olduğu için kilo verme hedefi uygulanmadı.'}
- const adj=goal==='lose'?-Math.min(600,Math.max(250,tdee*.15)):goal==='gain'?Math.min(300,Math.max(150,tdee*.07)):0;
- const kcal=Math.round(Math.max(tdee+adj,m?1500:1200,goal==='lose'?bmr:0)/10)*10;
- const pk=goal==='lose'?(wk>=3?1.8:1.5):goal==='gain'?(wk>=3?1.8:1.6):(wk>=3?1.4:1.2);
+ let goal=b.goal,note='',eff=goal;
+ if(goal==='lose'&&bmi<18.5){eff='maintain';note='Kilo indeksin düşük olduğu için kilo verme hedefi uygulanmadı. '}
+ if(goal==='muscle'&&!lifts){eff='maintain';note='Kas kazanmak için ağırlık antrenmanı gerekir; antrenman olmadan fazla kalori kasa değil yağa gider, bu yüzden kalorin bakım düzeyinde tutuldu. '}
+ const adj=eff==='lose'?-Math.min(600,Math.max(250,tdee*.15)):eff==='gain'?Math.min(300,Math.max(150,tdee*.07)):eff==='muscle'?Math.min(200,Math.max(100,tdee*.05)):0;
+ const kcal=Math.round(Math.max(tdee+adj,m?1500:1200,eff==='lose'?bmr:0)/10)*10;
+ const hi=wk>=3;
+ const pk=lifts?({lose:2.2,maintain:1.6,gain:1.9,muscle:2.0}[goal==='muscle'?'muscle':eff]):({lose:hi?1.6:1.3,maintain:hi?1.4:1,gain:hi?1.6:1.2,muscle:1.4}[eff]);
  const p=Math.min(Math.round(w*pk),Math.round(kcal*.35/4));let f=Math.round(kcal*.27/9),c=Math.round((kcal-4*p-9*f)/4);
  if(c<100){f=Math.round(kcal*.2/9);c=Math.max(0,Math.round((kcal-4*p-9*f)/4))}
- return{bmr:Math.round(bmr),tdee:Math.round(tdee),adj:kcal-Math.round(tdee),kcal,p,c,f,bmi,wk,note,goal}}
+ return{bmr:Math.round(bmr),tdee:Math.round(tdee),adj:kcal-Math.round(tdee),kcal,p,c,f,bmi,wk,note,goal,lifts,pk:p/w}}
 const planOf=()=>{const b=S.body;return b?.sex&&b.birth_year&&b.height_cm&&b.weight_kg?calcPlan(b):null};
 const tg=k=>{const pl=planOf();return pl?` / ${pl[k]} g`:''};
 function planView(){
  const pl=planOf();
  if(!pl)return`<div class="card"><div class="big">${S.p.daily_goal}<small> kcal</small></div><small>Hedefini hesaplamak için aşağıdaki bilgileri doldur.</small></div>`;
- const pc=(g,k)=>Math.round(g*k/pl.kcal*100);
+ const pc=(g,k)=>Math.round(g*k/pl.kcal*100),gl={lose:'kilo verme',gain:'kilo alma',maintain:'kiloyu koruma',muscle:'kas kazanma, yağlanmadan'}[pl.goal];
  return`<div class="card"><div class="big">${pl.kcal}<small> kcal / gün</small></div>
  <div class="macros"><div class="k-p"><b>${pl.p} g</b><small>protein %${pc(pl.p,4)}</small></div><div class="k-c"><b>${pl.c} g</b><small>karbonhidrat %${pc(pl.c,4)}</small></div><div class="k-f"><b>${pl.f} g</b><small>yağ %${pc(pl.f,9)}</small></div></div>
  <ul style="margin-top:12px"><li class="m"><div><b>Bazal metabolizma</b><small>dinlenirken yaktığın</small></div><span class="k">${pl.bmr}</span></li>
  <li class="m"><div><b>Günlük harcama</b><small>haftada ${pl.wk} gün spor</small></div><span class="k">${pl.tdee}</span></li>
- <li class="m"><div><b>Amaç farkı</b><small>${pl.goal==='lose'?'kilo verme':pl.goal==='gain'?'kilo alma':'kiloyu koruma'}</small></div><span class="k">${pl.adj>0?'+':''}${pl.adj}</span></li></ul>
+ <li class="m"><div><b>Amaç farkı</b><small>${gl}</small></div><span class="k">${pl.adj>0?'+':''}${pl.adj}</span></li>
+ <li class="m"><div><b>Protein</b><small>kilo başına</small></div><span class="k">${pl.pk.toFixed(1)} g</span></li></ul>
  <small class="mute" style="display:block;margin-top:6px">Kilo indeksin ${pl.bmi.toFixed(1)}. Bunlar tahmindir: 2-3 hafta kilonu izle, hızlı ya da yavaş değişiyorsa bilgilerini güncelle. ${esc(pl.note)}</small></div>`}
 let refreshing=false;
 async function refresh(){
