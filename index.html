@@ -100,6 +100,7 @@ nav .plus{flex:none;width:58px;height:58px;border-radius:50%;background:var(--in
 .sbox{display:flex;align-items:center;gap:6px;background:var(--soft);border-radius:14px;padding:3px 6px 3px 12px;margin:14px 0 8px;color:var(--mute)}
 .sbox input{flex:1;min-width:0;border:0;background:transparent;margin:0;padding:11px 4px;font-size:16px;color:var(--ink);outline:none}
 .sbox .bcb{padding:8px;border-radius:10px;color:var(--ink)}
+.mini{font-size:12px;color:var(--acc);padding:3px 8px 3px 0;text-align:left;font-weight:600}
 </style></head>
 <body><div id="app"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
@@ -337,6 +338,11 @@ app.addEventListener('click',async e=>{
  else if(a==='edclose'){S.ed=null;render()}
  else if(a==='edel'){readEd();S.ed.items.splice(+id,1);render()}
  else if(a==='edadd'){readEd();S.ed.items.push({...PRE[+id]});render()}
+ else if(a==='aifix'){keepName();const it=S.ai.res.items,n=askName(it[+id]);if(n&&n!==it[+id].name)renameItem(it,+id,n,render)}
+ else if(a==='aialt'){keepName();const[i,k]=id.split(':').map(Number),it=S.ai.res.items;renameItem(it,i,it[i].alt[k],render)}
+ else if(a==='edfix'){readEd();const it=S.ed.items,n=askName(it[+id]);if(n&&n!==it[+id].name)renameItem(it,+id,n,render)}
+ else if(a==='edalt'){readEd();const[i,k]=id.split(':').map(Number),it=S.ed.items;renameItem(it,i,it[i].alt[k],render)}
+ else if(a==='airetry'){keepName();S.ai.res=null;S.ai.orig=null;render()}
  else if(a==='ntopen')ntopen(id);
  else if(a==='ntall'){await db.from('notifications').update({read:true}).eq('user_id',S.me.id).eq('read',false);load()}
  else if(a==='pushon')pushOn();
@@ -413,7 +419,7 @@ async function shrink(f,mx=1024){
  const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.7));
  const b64=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result.split(',')[1]);fr.readAsDataURL(blob)});
  return{blob,b64,orig:f,url:URL.createObjectURL(blob)}}
-const VER='v15';
+const VER='v16';
 const mm=x=>{const f=v=>Math.round(x.grams*(+v||0)/100);return dt('cp')+'protein '+f(x.protein_per_100g)+' g '+dt('cc')+'karb. '+f(x.carbs_per_100g)+' g '+dt('cf')+'yağ '+f(x.fat_per_100g)+' g'};
 const im=x=>Math.round(x.grams*(+x.kcal_per_100g||0)/100)+' kcal, '+mm(x);
 function tot(){const it=S.ai.res.items,s=k=>it.reduce((a,x)=>a+x.grams*(+x[k]||0)/100,0);return{kcal:s('kcal_per_100g'),p:s('protein_per_100g'),c:s('carbs_per_100g'),f:s('fat_per_100g')}}
@@ -429,10 +435,10 @@ function aiView(){
  else if(!r.items?.length)b+=`<div class="empty">Yemek algılanamadı. Daha yakından ve aydınlıkta tekrar dene.</div><button class="btn ghost" data-act="aiclose">Kapat</button>`;
  else{const t=tot(),f=FJ[r.confidence]??.25;
   b+=`<h2 style="margin-top:14px">${esc(r.name||'Öğün')}</h2><div class="card"><div class="big" id="tk">${Math.round(t.kcal)}</div><small>kcal, <span id="tr">${Math.round(t.kcal*(1-f))} - ${Math.round(t.kcal*(1+f))} kcal arası</span> (güven: ${{exact:'kesin, etiket',high:'yüksek',medium:'orta',low:'düşük'}[r.confidence]||'orta'})</small><small class="mute" style="display:block">${r.source?'Kaynak: '+esc(r.source):'Model: '+esc(r.model||"?")}</small><div class="macros"><div class="k-p"><b id="tp">${Math.round(t.p)} g</b><small>protein</small></div><div class="k-c"><b id="tc">${Math.round(t.c)} g</b><small>karbonhidrat</small></div><div class="k-f"><b id="tf">${Math.round(t.f)} g</b><small>yağ</small></div></div></div>
-  <h2>Gramları düzelt</h2>${r.items.map((x,i)=>`<div class="it"><div><b>${esc(x.name)}</b><small id="k${i}">${im(x)}</small></div><div class="row"><input type="number" inputmode="decimal" data-g="${i}" value="${Math.round(x.grams)}" min="0" style="margin:0;width:78px" aria-label="gram"><button class="x" data-act="aidel" data-id="${i}" aria-label="Kaldır">×</button></div></div>`).join('')}
+  ${a.photos.length?`<button class="btn ghost sm" style="margin-top:10px" data-act="airetry">Hepsi yanlış: ipucu vererek tekrar analiz et</button>`:''}<h2>Gramları düzelt</h2>${r.items.map((x,i)=>`<div class="it"><div><b>${esc(x.name)}</b><small id="k${i}">${im(x)}</small>${(x.alt||[]).length?`<small class="mute">Belki: ${x.alt.slice(0,2).map((n,k)=>`<button class="mini" data-act="aialt" data-id="${i}:${k}">${esc(n)}</button>`).join(' ')}</small>`:''}<button class="mini" data-act="aifix" data-id="${i}">Bu ne? Düzelt</button></div><div class="row"><input type="number" inputmode="decimal" data-g="${i}" value="${Math.round(x.grams)}" min="0" style="margin:0;width:78px" aria-label="gram"><button class="x" data-act="aidel" data-id="${i}" aria-label="Kaldır">×</button></div></div>`).join('')}
   <small style="display:block;margin-top:10px">Eksik mi? Ekle:</small><div class="row" style="flex-wrap:wrap;margin:6px 0 12px">${PRE.map((p,i)=>`<button class="btn ghost sm" data-act="aiadd" data-id="${i}">${p.name}</button>`).join('')}</div>
   ${r.questions?.length?`<div class="card" style="margin-bottom:12px"><b>Şunları kontrol et</b><ul>${r.questions.map(q=>`<li><small>${esc(q)}</small></li>`).join('')}</ul></div>`:''}
-  <label>Öğün</label>${typeSel(defType())}<label class="chk"><input type="checkbox" name="sh" checked> Arkadaşlarım görebilsin</label><button class="btn" data-act="aisave">Kaydet</button>`}
+  <label>Öğün adı</label><input type="text" name="mname" maxlength="80" value="${esc(r.name||'')}"><label>Öğün</label>${typeSel(defType())}<label class="chk"><input type="checkbox" name="sh" checked> Arkadaşlarım görebilsin</label><button class="btn" data-act="aisave">Kaydet</button>`}
  return`<div class="ov"><div class="sheet"><div class="row sp"><h1 style="font-size:22px">${a.barcode?'Barkoddan ekle':a.text?'Yazıdan ekle':'Fotoğraftan ekle'}</h1><button class="x" data-act="aiclose" aria-label="Kapat">×</button></div>${b}</div></div>`}
 async function analyze(){
  const a=S.ai;a.note=document.querySelector('[name=note]')?.value||'';a.busy=true;render();
@@ -450,7 +456,7 @@ async function saveAI(){
  const u=p?await db.storage.from('meal-photos').upload(path,p.blob,{contentType:'image/jpeg'}):{};
  if(u.error){path=null;toast('Fotoğraf yüklenemedi, öğün fotoğrafsız kaydedildi.')}
  const d=new Date(S.day),n=new Date();d.setHours(n.getHours(),n.getMinutes());
- const e=await db.from('meals').insert({name:(r.name||it.map(x=>x.name).join(', ')).slice(0,80),kcal:Math.round(t.kcal),protein:Math.round(t.p),carbs:Math.round(t.c),fat:Math.round(t.f),eaten_at:d.toISOString(),shared:sh,photo_path:path,items:it,meal_type:document.querySelector('[name=mt]').value,ai_items:a.orig||null,ai_model:r.model||null});
+ const e=await db.from('meals').insert({name:((document.querySelector('[name=mname]')?.value||r.name)||it.map(x=>x.name).join(', ')).slice(0,80),kcal:Math.round(t.kcal),protein:Math.round(t.p),carbs:Math.round(t.c),fat:Math.round(t.f),eaten_at:d.toISOString(),shared:sh,photo_path:path,items:it,meal_type:document.querySelector('[name=mt]').value,ai_items:a.orig||null,ai_model:r.model||null});
  if(e.error)return toast(trErr(e.error.message));
  S.ai=null;S.stT=0;toast('Öğün kaydedildi.');if(p){const sv={f:p.orig};S.saved=sv;setTimeout(()=>{if(S.saved===sv){S.saved=null;render()}},25000)}load()}
 app.addEventListener('change',async e=>{
@@ -564,7 +570,7 @@ function remindView(){
  return o}
 function notesView(m){
  const l=S.rx?.id===m.id?S.rx.cm||[]:[];
- return`<h2>Notlar</h2>${l.map(c=>`<div class="it" style="align-items:flex-start"><div><b>${c.user_id===S.me.id?'Sen':esc(S.names[c.user_id]||'?')}</b><small style="display:block;color:var(--ink)">${esc(c.body)}</small></div>${c.user_id===S.me.id||m.user_id===S.me.id?`<button class="x" data-act="cdel" data-id="${c.id}" aria-label="Notu sil">×</button>`:''}</div>`).join('')}
+ return`<h2>Notlar</h2><small class="mute">Bir notu, yazan kişiyle arkadaş olanlar ve öğün sahibi görür.</small>${l.map(c=>`<div class="it" style="align-items:flex-start"><div><b>${c.user_id===S.me.id?'Sen':esc(S.names[c.user_id]||'?')}</b><small style="display:block;color:var(--ink)">${esc(c.body)}</small></div>${c.user_id===S.me.id||m.user_id===S.me.id?`<button class="x" data-act="cdel" data-id="${c.id}" aria-label="Notu sil">×</button>`:''}</div>`).join('')}
  <form data-form="note" class="row" style="margin-top:8px"><input type="text" name="t" maxlength="200" placeholder="Kısa bir not yaz..." style="margin:0;flex:1" required><button class="btn sm" style="height:50px">Gönder</button></form>`}
 const wname=d=>d.toLocaleDateString('tr-TR',{weekday:'long'});
 function weekWeight(){const l=S.wt?.[0];if(!l)return null;const ref=new Date();ref.setDate(ref.getDate()-7);const o=S.wt.find(x=>x.day<=dkey(ref));return o?+(l.kg-o.kg):null}
@@ -623,7 +629,7 @@ function editView(){
  return`<div class="ov"><div class="sheet"><div class="row sp"><h1 style="font-size:22px">Öğünü düzenle</h1><button class="x" data-act="edclose" aria-label="Kapat">×</button></div>
  <form data-form="edit" style="margin-top:12px"><label>Ad</label><input type="text" name="name" required maxlength="80" value="${esc(e.name)}">
  <div class="row" style="align-items:flex-start"><div style="flex:1"><label>Öğün</label>${typeSel(e.mt)}</div><div style="flex:1"><label>Saat</label><input type="time" name="tm" required value="${e.time}"></div></div>
- ${it?`<h2 style="margin-top:4px">Gramları düzelt</h2>${it.map((x,i)=>`<div class="it"><div><b>${esc(x.name)}</b><small id="ek${i}">${im(x)}</small></div><div class="row"><input type="number" inputmode="decimal" data-eg="${i}" value="${Math.round(x.grams)}" min="0" style="margin:0;width:78px" aria-label="gram"><button type="button" class="x" data-act="edel" data-id="${i}" aria-label="Kaldır">×</button></div></div>`).join('')}
+ ${it?`<h2 style="margin-top:4px">Gramları düzelt</h2>${it.map((x,i)=>`<div class="it"><div><b>${esc(x.name)}</b><small id="ek${i}">${im(x)}</small>${(x.alt||[]).length?`<small class="mute">Belki: ${x.alt.slice(0,2).map((n,k)=>`<button type="button" class="mini" data-act="edalt" data-id="${i}:${k}">${esc(n)}</button>`).join(' ')}</small>`:''}<button type="button" class="mini" data-act="edfix" data-id="${i}">Bu ne? Düzelt</button></div><div class="row"><input type="number" inputmode="decimal" data-eg="${i}" value="${Math.round(x.grams)}" min="0" style="margin:0;width:78px" aria-label="gram"><button type="button" class="x" data-act="edel" data-id="${i}" aria-label="Kaldır">×</button></div></div>`).join('')}
   <div class="row" style="flex-wrap:wrap;margin:10px 0"><small class="mute">Ekle:</small>${PRE.map((p,i)=>`<button type="button" class="btn ghost sm" data-act="edadd" data-id="${i}">${p.name}</button>`).join('')}</div>
   <div class="card" style="margin-bottom:12px"><div class="big" id="etk">${Math.round(t.kcal)} kcal</div><small id="etm">${macroLine(t)}</small></div>`
  :`<label>Kalori (kcal)</label><input type="number" name="kcal" required min="0" max="5000" inputmode="numeric" value="${e.kcal}"><div class="g3"><div><label>Protein g</label>${num('protein',e.protein,1)}</div><div><label>Karb. g</label>${num('carbs',e.carbs,1)}</div><div><label>Yağ g</label>${num('fat',e.fat,1)}</div></div>`}
@@ -722,6 +728,16 @@ function planView(){
  <li class="m"><div><b>Amaç farkı</b><small>${gl}</small></div><span class="k">${pl.adj>0?'+':''}${pl.adj}</span></li>
  <li class="m"><div><b>Protein</b><small>kilo başına</small></div><span class="k">${pl.pk.toFixed(1)} g</span></li></ul>
  <small class="mute" style="display:block;margin-top:6px">Kilo indeksin ${pl.bmi.toFixed(1)}. Bunlar tahmindir: 2-3 hafta kilonu izle, hızlı ya da yavaş değişiyorsa bilgilerini güncelle. ${esc(pl.note)}</small></div>`}
+/* ---------- v16: yanlış tanınan yemeği düzeltme ---------- */
+const askName=x=>(prompt('Bu aslında ne? Örn: ızgara bonfile',x.name)||'').trim();
+async function renameItem(items,i,name,done){
+ const old=items[i];toast('Yeniden hesaplanıyor...');
+ const call=db.functions.invoke('analyze-meal',{body:{mode:'text',fast:true,note:'100 g '+name}});
+ const to=new Promise(r=>setTimeout(()=>r({data:{error:'Çok uzun sürdü, tekrar dene.'}}),60000));
+ const{data}=await Promise.race([call,to]),it=data?.items?.[0];
+ if(!it){toast(data?.error||'Hesaplanamadı. Fonksiyonu güncellediğinden emin ol.');return}
+ items[i]={...it,name,grams:old.grams,alt:[]};done()}
+const keepName=()=>{const n=document.querySelector('[name=mname]');if(n&&S.ai?.res)S.ai.res.name=n.value};
 let refreshing=false;
 async function refresh(){
  if(!S.me||refreshing||document.hidden||S.sheet||S.bc||S.ed||S.ai||S.detail||S.zoom||/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName||''))return;
