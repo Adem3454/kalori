@@ -101,6 +101,7 @@ nav .plus{flex:none;width:58px;height:58px;border-radius:50%;background:var(--in
 .sbox input{flex:1;min-width:0;border:0;background:transparent;margin:0;padding:11px 4px;font-size:16px;color:var(--ink);outline:none}
 .sbox .bcb{padding:8px;border-radius:10px;color:var(--ink)}
 .mini{font-size:12px;color:var(--acc);padding:3px 8px 3px 0;text-align:left;font-weight:600}
+.offb{background:var(--soft);border-radius:12px;padding:8px 12px;font-size:13px;margin-bottom:10px;color:var(--ink)}
 </style></head>
 <body><div id="app"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
@@ -143,16 +144,19 @@ async function submitAuth(f){
 
 /* ---------- Veri ---------- */
 async function boot(){
- const{data:{session}}=await db.auth.getSession();
+ let session=null;try{session=(await db.auth.getSession()).data.session}catch{}
+ if(!session&&!navigator.onLine&&cget('c_me')&&cget('c_p')){const me=cget('c_me');S.me=me;S.p=cget('c_p');S.body=cget('c_body');S.pr={[me.id]:S.p};S.names={};S.fr=[];S.feed=[];S.offline=true;S.offlineBoot=true;
+  const[a,b]=range(S.day),c=cget('c_meals');S.meals=[...(c&&c.k===dkey(S.day)?c.m:[]),...queuedFor(a,b)];return render()}
  if(!session)return authView();
  S.me=session.user;
  const{data:p}=await db.from('profiles').select('*').eq('id',S.me.id).single();
  if(!p){await db.auth.signOut();return authView()}
- S.p=p;{const{data:bi}=await db.from('body_info').select('*').maybeSingle();S.body=bi}
+ S.p=p;cset('c_me',{id:S.me.id,email:S.me.email});cset('c_p',p);
+ {const{data:bi}=await db.from('body_info').select('*').maybeSingle();S.body=bi;cset('c_body',bi)}
  {const pl=planOf();if(pl&&pl.kcal!==S.p.daily_goal){const r=await db.from('profiles').update({daily_goal:pl.kcal}).eq('id',S.me.id);if(!r.error){S.p.daily_goal=pl.kcal;toast('Günlük hedefin güncellendi: '+pl.kcal+' kcal')}}}
  {const{data:np}=await db.from('notif_prefs').select('*').maybeSingle();S.np=np}
  await cleanupPhotos();
- await load()}
+ await load();flushQueue()}
 
 async function load(){
  const[a,b]=range(S.day);
@@ -160,7 +164,8 @@ async function load(){
   db.from('meals').select('*').eq('user_id',S.me.id).gte('eaten_at',a).lt('eaten_at',b).order('eaten_at'),
   db.from('friendships').select('*'),
   db.from('notifications').select('*').order('created_at',{ascending:false}).limit(40)]);
- S.meals=m.data||[];S.fr=f.data||[];
+ if(m.error&&f.error){S.offline=true;const c=cget('c_meals');S.meals=[...(c&&c.k===dkey(S.day)?c.m:[]),...queuedFor(a,b)];render();return}
+ S.offline=false;S.meals=[...(m.data||[]),...queuedFor(a,b)];S.fr=f.data||[];if(!m.error)cset('c_meals',{k:dkey(S.day),m:m.data||[]});
  const nt=n.data||[],ids=[...new Set([...S.fr.flatMap(x=>[x.requester,x.addressee]),...nt.map(x=>x.actor_id)])].filter(i=>i!==S.me.id);
  S.names={};
  S.pr={[S.me.id]:S.p};
@@ -168,11 +173,12 @@ async function load(){
  const fids=S.fr.filter(x=>x.status==='accepted').map(x=>x.requester===S.me.id?x.addressee:x.requester);
  S.feed=[];
  if(fids.length){const{data:fm}=await db.from('meals').select('*').in('user_id',fids).gte('eaten_at',a).lt('eaten_at',b).order('eaten_at',{ascending:false});S.feed=fm||[]}
+ S.ff=[];if(S.tab==='friends'&&S.fsub==='feed'&&fids.length){const w=new Date();w.setDate(w.getDate()-7);const{data:ff}=await db.from('meals').select('*').in('user_id',fids).gte('eaten_at',w.toISOString()).order('eaten_at',{ascending:false}).limit(40);S.ff=ff||[]}
  {const old=new Set((S.nt||[]).map(x=>x.id));S.nt=nt;
   if(S.ntLoaded){const nw=nt.filter(x=>!x.read&&!old.has(x.id));if(nw.length)toast(ntText(nw[0])+(nw.length>1?` (+${nw.length-1})`:''))}
   S.ntLoaded=true}
  if(!S.stT||Date.now()-S.stT>120000){S.stT=Date.now();await loadStreaks([S.me.id,...fids])}
- const ps=[...S.meals,...S.feed].map(m=>m.photo_path).filter(Boolean);S.urls={};
+ const ps=[...S.meals,...S.feed,...(S.ff||[])].map(m=>m.photo_path).filter(Boolean);S.urls={};
  if(ps.length){const{data:su}=await db.storage.from('meal-photos').createSignedUrls(ps,3600);(su||[]).forEach(x=>{if(x.signedUrl)S.urls[x.path]=x.signedUrl})}
  const ap=Object.values(S.pr).map(p=>p.avatar_path).filter(Boolean);S.av={};
  if(ap.length){const{data:au}=await db.storage.from('avatars').createSignedUrls(ap,3600);(au||[]).forEach(x=>{if(x.signedUrl)S.av[x.path]=x.signedUrl})}
@@ -202,6 +208,7 @@ const seen=id=>{try{return localStorage.getItem('seen_'+id)||''}catch{return''}}
 function markSeen(id){const ms=S.feed.filter(m=>m.user_id===id);if(!ms.length)return;try{localStorage.setItem('seen_'+id,ms.map(m=>m.eaten_at).sort().pop())}catch{}}
 function friendsView(){
  if(S.view?.friend)return friendPage(S.view.friend);
+ if(S.fsub==='feed')return fseg()+feedView();
  const me=S.me.id,inc=S.fr.filter(x=>x.status==='pending'&&x.addressee===me),out=S.fr.filter(x=>x.status==='pending'&&x.requester===me),acc=S.fr.filter(x=>x.status==='accepted');
  const other=x=>x.requester===me?x.addressee:x.requester,today=new Date().toDateString()===S.day.toDateString();
  const by={};S.feed.forEach(m=>(by[m.user_id]??=[]).push(m));
@@ -209,7 +216,7 @@ function friendsView(){
   const sub=nw?`<span class="newb">${nw} yeni öğün</span>`:ms.length?`${ms.length} öğün, ${tot} kcal`:'Öğün yok';
   const ph=ms.filter(m=>S.urls[m.photo_path]).slice(0,3).map(m=>`<img class="thumb" style="width:34px;height:34px;border-radius:8px" src="${S.urls[m.photo_path]}" alt="">`).join('');
   return`<button class="frow" data-act="friend" data-id="${id}">${avatar(id,48)}<span style="flex:1;min-width:0"><b>${esc(S.names[id]||'?')}</b>${(S.st?.[id]||0)>=2?`<small class="newb"> ${S.st[id]} gün seri</small>`:''}<small style="display:block">${sub}</small></span><span class="row" style="gap:4px">${ph}</span><span class="mute">›</span></button>`};
- return`${dayBar()}
+ return`${fseg()}${dayBar()}
  <form data-form="friend" class="row" style="align-items:flex-end"><div style="flex:1"><label>Kullanıcı adıyla arkadaş ekle</label><input type="text" name="u" required autocapitalize="none" style="margin-bottom:0"></div><button class="btn sm" style="height:50px">İstek gönder</button></form>
  ${inc.length?`<h2>Gelen istekler</h2>${inc.map(x=>`<div class="card row sp" style="margin-bottom:8px"><span class="row">${avatar(x.requester,36)}<b>${esc(S.names[x.requester])}</b></span><span class="row"><button class="btn sm" data-act="accept" data-id="${x.id}">Kabul et</button><button class="btn sm ghost" data-act="unfriend" data-id="${x.id}">Reddet</button></span></div>`).join('')}`:''}
  ${out.length?`<h2>Gönderilen istekler</h2>${out.map(x=>`<div class="card row sp" style="margin-bottom:8px"><span>${esc(S.names[x.addressee])}</span><small>yanıt bekliyor</small></div>`).join('')}`:''}
@@ -226,7 +233,7 @@ function detailView(){
  ${u?`<img class="hero" src="${u}" alt="Yemek fotoğrafı" data-act="zoom" data-id="${m.id}"><small class="mute">Büyütmek için fotoğrafa dokun. Fotoğraflar 60 gün sonra uygulamadan silinir.</small>${S.pb?.id===m.id?`<button class="btn ghost sm" style="display:block;margin-top:8px" data-act="dphone">Telefona kaydet</button>`:''}`:''}
  <div class="card" style="margin-top:10px"><div class="big">${m.kcal}<small> kcal</small></div><div class="macros"><div class="k-p"><b>${+m.protein||0} g</b><small>protein</small></div><div class="k-c"><b>${+m.carbs||0} g</b><small>karbonhidrat</small></div><div class="k-f"><b>${+m.fat||0} g</b><small>yağ</small></div></div></div>
  ${m.ai_items?`<small class="mute" style="display:block;margin-top:8px">Yapay zekanın ilk tahmini: ${Math.round(totOf(m.ai_items).kcal)} kcal${m.edited_at?' (sonra düzenlendi)':''}</small>`:''}${it.length?`<h2>İçindekiler</h2><div class="card" style="padding:4px 16px">${it.map(x=>`<div class="it"><div><b>${esc(x.name)}</b><small>${Math.round(x.grams)} g, ${mm(x)}</small></div><span class="k">${Math.round(x.grams*x.kcal_per_100g/100)} kcal</span></div>`).join('')}</div>`:''}
- ${rxView(m)}${own?`<div class="row" style="margin-top:12px"><button class="btn sm" data-act="edit">Düzenle</button><button class="btn ghost sm" style="color:var(--over);border-color:var(--over)" data-act="del" data-id="${m.id}">Sil</button></div>`:''}</div></div>`}
+ ${rxView(m)}${own?`<div class="row" style="margin-top:12px"><button class="btn sm" data-act="edit">Düzenle</button><button class="btn ghost sm" style="color:var(--over);border-color:var(--over)" data-act="del" data-id="${m.id}">Sil</button></div>`:`<button class="btn" style="margin-top:12px" data-act="copyme">Aynısını ben de yedim${m.photo_path?' (fotoğrafıyla)':''}</button>`}</div></div>`}
 const zoomView=()=>`<div class="zoom" data-act="zclose"><button class="x" style="position:absolute;top:calc(env(safe-area-inset-top) + 10px);right:10px;color:#fff;font-size:36px" data-act="zclose" aria-label="Kapat">×</button><img src="${S.zoom}" alt=""></div>`;
 const calcGoal=b=>calcPlan(b).kcal;
 function profileView(){
@@ -282,7 +289,7 @@ function sheetView(){
 function render(){
  const v=S.tab==='today'?todayView():S.tab==='friends'?friendsView():S.tab==='report'?reportView():S.tab==='notif'?notifView():profileView();
  const pend=S.fr.filter(x=>x.status==='pending'&&x.addressee===S.me.id).length;
- app.innerHTML=appbar()+v+navHtml(pend)+(S.sheet?sheetView():'')+(S.ai?aiView():'')+(S.detail?detailView():'')+(S.zoom?zoomView():'')+(S.bc?bcView():'')+(S.saved?savedBarView():'')+(S.ed?editView():'')}
+ app.innerHTML=appbar()+offBanner()+v+navHtml(pend)+(S.sheet?sheetView():'')+(S.ai?aiView():'')+(S.detail?detailView():'')+(S.zoom?zoomView():'')+(S.bc?bcView():'')+(S.saved?savedBarView():'')+(S.ed?editView():'')}
 
 /* ---------- Olaylar ---------- */
 const shift=n=>{S.day=new Date(S.day);S.day.setDate(S.day.getDate()+n);load()};
@@ -299,19 +306,18 @@ app.addEventListener('click',async e=>{
  else if(a==='qmy')addCopy(S.qr.my[+id]);
  else if(a==='qai')aiText();
  else if(a==='qoff'){const x=S.qr.off[+id];S.sheet=false;S.ai={photos:[],note:'',barcode:true,res:{name:x.name,confidence:'exact',source:'Open Food Facts',questions:['Gramı yediğin miktara göre düzelt.'],items:[{...x}]}};render()}else if(a==='close'){S.sheet=false;render()}
+ else if(a==='del'&&id.startsWith('tmp_')){cset('q',Q().filter(x=>x.id!==id));S.stT=0;load()}
  else if(a==='del'){if(confirm('Bu öğün silinsin mi?')){const pm=S.meals.find(x=>x.id===id);const r=await db.from('meals').delete().eq('id',id);if(!r.error&&pm?.photo_path)db.storage.from('meal-photos').remove([pm.photo_path]);if(r.error)toast(trErr(r.error.message));S.detail=null;S.stT=0;load()}}
  else if(a==='accept'){await db.from('friendships').update({status:'accepted'}).eq('id',id);toast('Arkadaş eklendi.');load()}
  else if(a==='unfriend'){if(confirm('Bu arkadaşlık/istek kaldırılsın mı?')){await db.from('friendships').delete().eq('id',id);S.view=null;load()}}
- else if(a==='detail'){S.detail=[...S.meals,...S.feed].find(x=>x.id===id);S.rx=null;S.pb=null;render();loadRx(id);prefetchPhoto(S.detail)}
+ else if(a==='detail'){if(id.startsWith('tmp_'))return toast('Bu öğün henüz gönderilmedi, bağlantı gelince gönderilecek.');S.detail=[...S.meals,...S.feed,...(S.ff||[])].find(x=>x.id===id);S.rx=null;S.pb=null;render();loadRx(id);prefetchPhoto(S.detail)}
  else if(a==='dclose'){S.detail=null;render()}
  else if(a==='zoom'){S.zoom=S.urls[S.detail.photo_path];render()}
  else if(a==='zclose'){S.zoom=null;render()}
  else if(a==='friend'){S.view={friend:id};markSeen(id);render()}
  else if(a==='fback'){S.view=null;render()}
  else if(a==='rtab'){S.rt=id;render()}
- else if(a==='freq'){const x=S.freq[+id],d=new Date(S.day),n=new Date();d.setHours(n.getHours(),n.getMinutes());
-  const r=await db.from('meals').insert({name:x.name,kcal:x.kcal,protein:x.protein,carbs:x.carbs,fat:x.fat,items:x.items,eaten_at:d.toISOString(),meal_type:defType(),shared:x.shared??true});
-  if(r.error)toast(trErr(r.error.message));else{S.sheet=false;S.stT=0;toast(x.name+' eklendi.');load()}}
+ else if(a==='freq')addCopy(S.freq[+id]);
  else if(a==='scan'){S.sheet=false;S.bc={};render();startScan()}
  else if(a==='bcclose'){await stopScan();S.bc=null;render()}
  else if(a==='rx'){const l=S.rx?.list||[],mine=l.find(x=>x.user_id===S.me.id),q=db.from('reactions');
@@ -343,6 +349,14 @@ app.addEventListener('click',async e=>{
  else if(a==='edfix'){readEd();const it=S.ed.items,n=askName(it[+id]);if(n&&n!==it[+id].name)renameItem(it,+id,n,render)}
  else if(a==='edalt'){readEd();const[i,k]=id.split(':').map(Number),it=S.ed.items;renameItem(it,i,it[i].alt[k],render)}
  else if(a==='airetry'){keepName();S.ai.res=null;S.ai.orig=null;render()}
+ else if(a==='copyme'){const m=S.detail;let path=null;
+  if(m.photo_path&&navigator.onLine){toast('Kopyalanıyor...');
+   try{const b=S.pb?.id===m.id?S.pb.b:await(await fetch(S.urls[m.photo_path])).blob();
+    path=`${S.me.id}/${crypto.randomUUID()}.jpg`;
+    const u=await db.storage.from('meal-photos').upload(path,b,{contentType:'image/jpeg'});
+    if(u.error)throw u.error}catch{path=null;toast('Fotoğraf kopyalanamadı, öğün fotoğrafsız eklendi.')}}
+  addCopy({...m,photo_path:path})}
+ else if(a==='fsub'){S.fsub=id;S.view=null;load()}
  else if(a==='ntopen')ntopen(id);
  else if(a==='ntall'){await db.from('notifications').update({read:true}).eq('user_id',S.me.id).eq('read',false);load()}
  else if(a==='pushon')pushOn();
@@ -368,7 +382,7 @@ app.addEventListener('submit',async e=>{
  if(k==='meal'){
   const d=new Date(S.day),n=new Date();d.setHours(n.getHours(),n.getMinutes());
   const num=x=>f.get(x)===''?null:+f.get(x);
-  const r=await db.from('meals').insert({name:f.get('name').trim(),kcal:Math.round(+f.get('kcal')),protein:num('protein'),carbs:num('carbs'),fat:num('fat'),eaten_at:d.toISOString(),shared:f.get('shared')==='on',meal_type:f.get('mt')});
+  const r=await saveMeal({name:f.get('name').trim(),kcal:Math.round(+f.get('kcal')),protein:num('protein'),carbs:num('carbs'),fat:num('fat'),eaten_at:d.toISOString(),shared:f.get('shared')==='on',meal_type:f.get('mt')});
   if(r.error)return toast(trErr(r.error.message));
   S.sheet=false;S.stT=0;load()}
  if(k==='friend'){
@@ -419,7 +433,7 @@ async function shrink(f,mx=1024){
  const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.7));
  const b64=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result.split(',')[1]);fr.readAsDataURL(blob)});
  return{blob,b64,orig:f,url:URL.createObjectURL(blob)}}
-const VER='v16';
+const VER='v18';
 const mm=x=>{const f=v=>Math.round(x.grams*(+v||0)/100);return dt('cp')+'protein '+f(x.protein_per_100g)+' g '+dt('cc')+'karb. '+f(x.carbs_per_100g)+' g '+dt('cf')+'yağ '+f(x.fat_per_100g)+' g'};
 const im=x=>Math.round(x.grams*(+x.kcal_per_100g||0)/100)+' kcal, '+mm(x);
 function tot(){const it=S.ai.res.items,s=k=>it.reduce((a,x)=>a+x.grams*(+x[k]||0)/100,0);return{kcal:s('kcal_per_100g'),p:s('protein_per_100g'),c:s('carbs_per_100g'),f:s('fat_per_100g')}}
@@ -469,7 +483,7 @@ app.addEventListener('input',e=>{const t=e.target;if(t.dataset.g!==undefined&&S.
 const TYPES={breakfast:'Kahvaltı',lunch:'Öğle',dinner:'Akşam',snack:'Atıştırmalık'};
 const defType=()=>{const h=new Date().getHours();return h>=4&&h<11?'breakfast':h<16&&h>=11?'lunch':h>=16&&h<22?'dinner':'snack'};
 const typeSel=v=>`<select name="mt">${Object.entries(TYPES).map(([k,t])=>`<option value="${k}" ${k===v?'selected':''}>${t}</option>`).join('')}</select>`;
-const mealLi=m=>`<li class="m tap" data-act="detail" data-id="${m.id}">${th(m)}<div><b>${esc(m.name)}</b><small>${hm(m.eaten_at)}${m.protein||m.carbs||m.fat?`${dt('cp')}${+m.protein||0}${dt('cc')}${+m.carbs||0}${dt('cf')}${+m.fat||0}`:''}</small></div><span class="k">${m.kcal}</span><button class="x" data-act="del" data-id="${m.id}" aria-label="Sil">×</button></li>`;
+const mealLi=m=>`<li class="m tap" data-act="detail" data-id="${m.id}">${th(m)}<div><b>${esc(m.name)}</b><small>${hm(m.eaten_at)}${m._q?', gönderilmedi':''}${m.protein||m.carbs||m.fat?`${dt('cp')}${+m.protein||0}${dt('cc')}${+m.carbs||0}${dt('cf')}${+m.fat||0}`:''}</small></div><span class="k">${m.kcal}</span><button class="x" data-act="del" data-id="${m.id}" aria-label="Sil">×</button></li>`;
 function mealList(){
  if(!S.meals.length)return`<div class="empty">Bu gün için öğün yok. “Öğün ekle” ile başla.</div>`;
  return[...Object.keys(TYPES),''].map(t=>{const ms=S.meals.filter(m=>(m.meal_type||'')===t);if(!ms.length)return'';
@@ -683,8 +697,9 @@ async function searchFoods(q){
  if(S.qr?.q===q){S.qr.busy=false;setQres()}}
 async function addCopy(x){
  const d=new Date(S.day),n=new Date();d.setHours(n.getHours(),n.getMinutes());
- const r=await db.from('meals').insert({name:x.name,kcal:x.kcal,protein:x.protein,carbs:x.carbs,fat:x.fat,items:x.items,eaten_at:d.toISOString(),meal_type:defType(),shared:x.shared??true});
- if(r.error)return toast(trErr(r.error.message));S.sheet=false;S.stT=0;toast(x.name+' eklendi.');load()}
+ const r=await saveMeal({name:x.name,kcal:x.kcal,protein:x.protein,carbs:x.carbs,fat:x.fat,items:x.items,photo_path:x.photo_path||null,eaten_at:d.toISOString(),meal_type:defType(),shared:x.shared??true});
+ if(r.error)return toast(trErr(r.error.message));
+ S.sheet=false;S.detail=null;S.stT=0;if(!r.queued)toast(x.name+' eklendi. Gramı Düzenle ile değiştirebilirsin.');load()}
 async function aiText(){
  const q=(S.q||'').trim();S.sheet=false;S.ai={photos:[],note:q,text:true,res:null};render();
  const call=db.functions.invoke('analyze-meal',{body:{mode:'text',note:q}});
@@ -738,10 +753,37 @@ async function renameItem(items,i,name,done){
  if(!it){toast(data?.error||'Hesaplanamadı. Fonksiyonu güncellediğinden emin ol.');return}
  items[i]={...it,name,grams:old.grams,alt:[]};done()}
 const keepName=()=>{const n=document.querySelector('[name=mname]');if(n&&S.ai?.res)S.ai.res.name=n.value};
+/* ---------- v17: çevrimdışı, akış, kopyala ---------- */
+const cget=k=>{try{return JSON.parse(localStorage.getItem(k))}catch{return null}};
+const cset=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
+const Q=()=>cget('q')||[];
+const isNet=e=>/fetch|network|failed|load failed/i.test(e?.message||'');
+function qpush(row){cset('q',[...Q(),{id:'tmp_'+Date.now()+Math.random().toString(36).slice(2,6),row}]);toast('İnternet yok: öğün telefonda bekliyor, bağlantı gelince gönderilecek.');return{queued:true}}
+async function saveMeal(row){
+ if(!navigator.onLine)return qpush(row);
+ const r=await db.from('meals').insert(row);
+ return r.error&&isNet(r.error)?qpush(row):r}
+const queuedFor=(a,b)=>Q().filter(x=>x.row.eaten_at>=a&&x.row.eaten_at<b).map(x=>({...x.row,id:x.id,user_id:S.me.id,_q:true}));
+let flushing=false;
+async function flushQueue(){
+ const q=Q();if(!q.length||!navigator.onLine||!S.me||flushing)return;flushing=true;
+ const rest=[];let sent=0;
+ try{for(const it of q){const r=await db.from('meals').insert(it.row);if(r.error&&isNet(r.error))rest.push(it);else if(!r.error)sent++}}finally{cset('q',rest);flushing=false}
+ if(sent){toast(sent+' bekleyen öğün gönderildi.');S.stT=0;load()}}
+const offBanner=()=>S.offline?`<div class="offb">Çevrimdışısın.${Q().length?' '+Q().length+' öğün gönderilmeyi bekliyor.':' Eklediklerin telefonda bekler, bağlantı gelince gönderilir.'}</div>`:'';
+window.addEventListener('offline',()=>{S.offline=true;if(S.me)render()});
+window.addEventListener('online',()=>{if(S.offlineBoot){S.offlineBoot=false;boot()}else{S.offline=false;flushQueue().then(()=>refresh())}});
+const fseg=()=>`<div class="seg">${[['list','Arkadaşlar'],['feed','Akış']].map(([k,t])=>`<button class="${(S.fsub||'list')===k?'on':''}" data-act="fsub" data-id="${k}">${t}</button>`).join('')}</div>`;
+function feedView(){
+ const l=S.ff||[];
+ return l.length?l.map(m=>`<div class="card tap" style="margin-bottom:12px;padding:0;overflow:hidden" data-act="detail" data-id="${m.id}">
+  <div class="row" style="padding:12px 14px;gap:10px">${avatar(m.user_id,36)}<div style="flex:1;min-width:0"><b>${esc(S.names[m.user_id]||'?')}</b><small style="display:block">${ago(m.eaten_at)}${m.meal_type?', '+TYPES[m.meal_type]:''}</small></div><span class="k">${m.kcal} kcal</span></div>
+  ${S.urls[m.photo_path]?`<img src="${S.urls[m.photo_path]}" alt="" style="width:100%;aspect-ratio:4/3;object-fit:cover;display:block">`:''}
+  <div style="padding:10px 14px"><b>${esc(m.name)}</b><small style="display:block">${dt('cp')}${+m.protein||0} g${dt('cc')}${+m.carbs||0} g${dt('cf')}${+m.fat||0} g</small></div></div>`).join(''):'<div class="empty">Arkadaşlarının son 7 günde paylaştığı öğünler burada görünür.</div>'}
 let refreshing=false;
 async function refresh(){
  if(!S.me||refreshing||document.hidden||S.sheet||S.bc||S.ed||S.ai||S.detail||S.zoom||/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName||''))return;
- refreshing=true;try{await load()}catch{}finally{refreshing=false}}
+ refreshing=true;try{await flushQueue();await load()}catch{}finally{refreshing=false}}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()});
 setInterval(refresh,30000);
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).catch(()=>{});
