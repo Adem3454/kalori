@@ -135,6 +135,7 @@ function authView(){
  <button class="link" data-act="mode">${reg?'Zaten hesabım var':'Yeni hesap oluştur'}</button></div>`}
 
 async function submitAuth(f){
+ if(!navigator.onLine)return toast('İnternet yok. Giriş yapmak için bağlantı gerekir.');
  const email=f.get('email'),password=f.get('password');let r;
  if(S.mode==='login')r=await db.auth.signInWithPassword({email,password});
  else r=await db.auth.signUp({email,password,options:{data:{username:(f.get('username')||'').trim().toLowerCase()}}});
@@ -143,14 +144,19 @@ async function submitAuth(f){
  boot()}
 
 /* ---------- Veri ---------- */
+function offlineBoot(){
+ const me=cget('c_me');S.me=me;S.p=cget('c_p');S.body=cget('c_body');S.pr={[me.id]:S.p};S.names={};S.fr=[];S.feed=[];S.offline=true;S.offlineBoot=true;
+ const[a,b]=range(S.day),c=cget('c_meals');S.meals=[...(c&&c.k===dkey(S.day)?c.m:[]),...queuedFor(a,b)];render()}
 async function boot(){
- let session=null;try{session=(await db.auth.getSession()).data.session}catch{}
- if(!session&&!navigator.onLine&&cget('c_me')&&cget('c_p')){const me=cget('c_me');S.me=me;S.p=cget('c_p');S.body=cget('c_body');S.pr={[me.id]:S.p};S.names={};S.fr=[];S.feed=[];S.offline=true;S.offlineBoot=true;
-  const[a,b]=range(S.day),c=cget('c_meals');S.meals=[...(c&&c.k===dkey(S.day)?c.m:[]),...queuedFor(a,b)];return render()}
+ let session=null,slow=false;
+ try{session=await Promise.race([db.auth.getSession().then(r=>r.data.session),new Promise(r=>setTimeout(()=>{slow=true;r(null)},4000))])}catch{}
+ const cached=cget('c_me')&&cget('c_p');
+ if(!session&&cached&&(!navigator.onLine||slow))return offlineBoot();
  if(!session)return authView();
  S.me=session.user;
- const{data:p}=await db.from('profiles').select('*').eq('id',S.me.id).single();
- if(!p){await db.auth.signOut();return authView()}
+ if(!navigator.onLine&&cached)return offlineBoot();
+ const pr=await db.from('profiles').select('*').eq('id',S.me.id).single();let p=pr.data;
+ if(!p){if(cached&&(!navigator.onLine||isNet(pr.error)))return offlineBoot();await db.auth.signOut();return authView()}
  S.p=p;cset('c_me',{id:S.me.id,email:S.me.email});cset('c_p',p);
  {const{data:bi}=await db.from('body_info').select('*').maybeSingle();S.body=bi;cset('c_body',bi)}
  {const pl=planOf();if(pl&&pl.kcal!==S.p.daily_goal){const r=await db.from('profiles').update({daily_goal:pl.kcal}).eq('id',S.me.id);if(!r.error){S.p.daily_goal=pl.kcal;toast('Günlük hedefin güncellendi: '+pl.kcal+' kcal')}}}
@@ -165,7 +171,8 @@ async function load(){
   db.from('friendships').select('*'),
   db.from('notifications').select('*').order('created_at',{ascending:false}).limit(40)]);
  if(m.error&&f.error){S.offline=true;const c=cget('c_meals');S.meals=[...(c&&c.k===dkey(S.day)?c.m:[]),...queuedFor(a,b)];render();return}
- S.offline=false;S.meals=[...(m.data||[]),...queuedFor(a,b)];S.fr=f.data||[];if(!m.error)cset('c_meals',{k:dkey(S.day),m:m.data||[]});
+ S.offline=false;if(S.offlineBoot){S.offlineBoot=false;boot();return}
+ S.meals=[...(m.data||[]),...queuedFor(a,b)];S.fr=f.data||[];if(!m.error)cset('c_meals',{k:dkey(S.day),m:m.data||[]});
  const nt=n.data||[],ids=[...new Set([...S.fr.flatMap(x=>[x.requester,x.addressee]),...nt.map(x=>x.actor_id)])].filter(i=>i!==S.me.id);
  S.names={};
  S.pr={[S.me.id]:S.p};
@@ -433,7 +440,7 @@ async function shrink(f,mx=1024){
  const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.7));
  const b64=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result.split(',')[1]);fr.readAsDataURL(blob)});
  return{blob,b64,orig:f,url:URL.createObjectURL(blob)}}
-const VER='v18';
+const VER='v19';
 const mm=x=>{const f=v=>Math.round(x.grams*(+v||0)/100);return dt('cp')+'protein '+f(x.protein_per_100g)+' g '+dt('cc')+'karb. '+f(x.carbs_per_100g)+' g '+dt('cf')+'yağ '+f(x.fat_per_100g)+' g'};
 const im=x=>Math.round(x.grams*(+x.kcal_per_100g||0)/100)+' kcal, '+mm(x);
 function tot(){const it=S.ai.res.items,s=k=>it.reduce((a,x)=>a+x.grams*(+x[k]||0)/100,0);return{kcal:s('kcal_per_100g'),p:s('protein_per_100g'),c:s('carbs_per_100g'),f:s('fat_per_100g')}}
