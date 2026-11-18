@@ -153,6 +153,13 @@ li.m.swl{display:block;padding:0;position:relative;overflow:hidden}
 .boot svg{animation:bspin 1.3s linear infinite}.boot b{font-size:28px;letter-spacing:-.02em}
 .boot small{opacity:0;animation:bshow .4s ease forwards;color:var(--mute)}.boot .b5{animation-delay:5s}.boot .b15{animation-delay:15s;position:absolute;margin-top:90px}
 @keyframes bspin{to{transform:rotate(360deg)}}@keyframes bshow{to{opacity:1}}
+.wk{display:flex;justify-content:space-between;gap:4px;margin:2px 0 8px}
+.wd{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:0;color:var(--ink)}
+.wd b{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid var(--line);background:var(--card);font-size:16px}
+.wd small{font-size:11px;color:var(--mute)}
+.wd.has b{border-color:var(--acc)}
+.wd.on b{background:var(--acc);border-color:var(--acc);color:#fff}.wd.on small{color:var(--ink);font-weight:700}
+.dtitle{margin:6px 0 12px}
 </style></head>
 <body><div id="app"><div class="boot" id="boot" role="status"><svg width="72" height="72" viewBox="0 0 72 72" aria-hidden="true"><circle cx="36" cy="36" r="28" fill="none" style="stroke:var(--soft)" stroke-width="8"/><path d="M36 8a28 28 0 0 1 24.2 14" fill="none" style="stroke:var(--acc)" stroke-width="8" stroke-linecap="round"/></svg><b>Kalori</b><small class="b5">Bağlantı yavaş görünüyor, biraz daha bekle...</small><small class="b15">Hâlâ açılmadıysa uygulamayı kapatıp tekrar aç.</small></div></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
@@ -246,10 +253,11 @@ async function load(){
 
 /* ---------- Ekranlar ---------- */
 function dayBar(){
- const today=new Date().toDateString()===S.day.toDateString();
- const t=today?'Bugün':S.day.toLocaleDateString('tr-TR',{weekday:'long',day:'numeric',month:'long'});
- return`<div class="days"><button data-act="prev" aria-label="Önceki gün">‹</button><h1>${t}</h1><button data-act="next" aria-label="Sonraki gün" ${today?'disabled style="opacity:.25"':''}>›</button></div>`}
-
+ const t0=new Date();t0.setHours(0,0,0,0);const sel=dkey(S.day),own=S.tab==='today',y=new Date(t0);y.setDate(y.getDate()-1);
+ const days=Array.from({length:7},(_,i)=>{const d=new Date(t0);d.setDate(t0.getDate()-6+i);return d});
+ const title=sel===dkey(t0)?'Bugün':sel===dkey(y)?'Dün':S.day.toLocaleDateString('tr-TR',{weekday:'long',day:'numeric',month:'long'});
+ return`<div class="wk" role="group" aria-label="Son 7 gün">${days.map(d=>{const k=dkey(d),on=k===sel,has=own&&(S.myDays?.has(k)||(on&&S.meals.length>0)),lb=d.toLocaleDateString('tr-TR',{weekday:'long',day:'numeric',month:'long'});
+  return`<button class="wd${on?' on':''}${has?' has':''}" data-act="pday" data-id="${k}" aria-pressed="${on}" aria-label="${lb}${has?', kayıt var':''}"><b>${d.getDate()}</b><small>${d.toLocaleDateString('tr-TR',{weekday:'short'})}</small></button>`}).join('')}</div><h1 class="dtitle">${title}</h1>`}
 function todayView(){
  const sum=k=>Math.round(S.meals.reduce((s,m)=>s+(+m[k]||0),0));
  const eaten=sum('kcal'),goal=S.p.daily_goal,left=goal-eaten,over=left<0,C=2*Math.PI*54;
@@ -358,6 +366,7 @@ app.addEventListener('click',async e=>{
  const el=e.target.closest('[data-act]');if(!el)return;
  if(el.classList.contains('ov')&&e.target!==el)return;
  const a=el.dataset.act,id=el.dataset.id;
+ if(['copyme','aisave','freq','qmy','qoff','qai','plater','pan'].includes(a)){if(el.disabled)return;el.disabled=true;setTimeout(()=>{el.disabled=false},3000)}
  if(el.classList.contains('swc')){if(Date.now()-lastSwipe<400)return;if(el.classList.contains('open')){el.classList.remove('open');el.style.transform='';return}}
  if(a==='mode'){S.mode=S.mode==='login'?'register':'login';authView()}
  else if(a==='tab'){S.tab=id;S.view=null;if(id==='today')S.fxRing=true;if(id==='report')return loadReport();vt(render)}
@@ -422,6 +431,7 @@ app.addEventListener('click',async e=>{
  else if(a==='stclose'){S.story=null;clearTimeout(S.stTm);render()}
  else if(a==='qrx'){const[mid,em]=id.split(':');const r=await db.from('reactions').upsert({meal_id:mid,user_id:S.me.id,emoji:em},{onConflict:'meal_id,user_id'});
   if(r.error)toast(trErr(r.error.message));else{(S.myrx??={})[mid]=em;render()}}
+ else if(a==='pday'){const[yy,mm2,dd]=id.split('-').map(Number);S.day=new Date(yy,mm2-1,dd,12);S.fxRing=true;load()}
  else if(a==='ringmode'){try{localStorage.setItem('ring_mode',ringMode()==='eaten'?'left':'eaten')}catch{}render()}
  else if(a==='wkimg')weekImage();
  else if(a==='sup'){const t=S.suppLog||[],on=t.includes(id),day=dkey(S.day);S.suppLog=on?t.filter(x=>x!==id):[...t,id];render();
@@ -454,6 +464,7 @@ app.addEventListener('click',async e=>{
 });
 app.addEventListener('submit',async e=>{
  e.preventDefault();const f=new FormData(e.target),k=e.target.dataset.form;
+ {const sb=e.target.querySelector('button:not([type=button])');if(sb){if(sb.disabled)return;sb.disabled=true;setTimeout(()=>{sb.disabled=false},2500)}}
  if(k==='auth')return submitAuth(f);
  if(k==='meal'){
   const d=new Date(S.day),n=new Date();d.setHours(n.getHours(),n.getMinutes());
@@ -510,7 +521,7 @@ async function shrink(f,mx=1024){
  const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.7));
  const b64=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result.split(',')[1]);fr.readAsDataURL(blob)});
  return{blob,b64,orig:f,url:URL.createObjectURL(blob)}}
-const VER='v24';
+const VER='v25';
 const mm=x=>{const f=v=>Math.round(x.grams*(+v||0)/100);return dt('cp')+'protein '+f(x.protein_per_100g)+' g '+dt('cc')+'karb. '+f(x.carbs_per_100g)+' g '+dt('cf')+'yağ '+f(x.fat_per_100g)+' g'};
 const im=x=>{const u=unitOf(x);return(u?`≈ ${Math.round(x.grams)} g, `:'')+Math.round(x.grams*(+x.kcal_per_100g||0)/100)+' kcal, '+mm(x)};
 function tot(){const it=S.ai.res.items,s=k=>it.reduce((a,x)=>a+x.grams*(+x[k]||0)/100,0);return{kcal:s('kcal_per_100g'),p:s('protein_per_100g'),c:s('carbs_per_100g'),f:s('fat_per_100g')}}
@@ -540,14 +551,14 @@ async function analyze(){
  if(error||!data||data.error||!Array.isArray(data.items)){toast(data?.error||'Analiz yapılamadı. Bağlantını ve kurulumu kontrol et.');return render()}
  data.items=data.items.map(x=>({...x,grams:Math.max(0,+x.grams||0),kcal_per_100g:+x.kcal_per_100g||0}));
  a.orig=JSON.parse(JSON.stringify(data.items));a.res=data;render()}
-async function saveAI(){
+async function saveAI0(){
  const a=S.ai,r=a.res,it=r.items.filter(x=>x.grams>0),t=tot(),p=a.photos[0];
  const sh=document.querySelector('[name=sh]').checked;
  let path=p?`${S.me.id}/${crypto.randomUUID()}.jpg`:null;
  const u=p?await db.storage.from('meal-photos').upload(path,p.blob,{contentType:'image/jpeg'}):{};
  if(u.error){path=null;toast('Fotoğraf yüklenemedi, öğün fotoğrafsız kaydedildi.')}
  const d=new Date(S.day),n=new Date();d.setHours(n.getHours(),n.getMinutes());const when=a.at?new Date(a.at):d;
- const e=await db.from('meals').insert({name:((document.querySelector('[name=mname]')?.value||r.name)||it.map(x=>x.name).join(', ')).slice(0,80),kcal:Math.round(t.kcal),protein:Math.round(t.p),carbs:Math.round(t.c),fat:Math.round(t.f),eaten_at:when.toISOString(),shared:sh,photo_path:path,items:it,meal_type:document.querySelector('[name=mt]').value,ai_items:a.orig||null,ai_model:r.model||null});
+ const e=await ins({name:((document.querySelector('[name=mname]')?.value||r.name)||it.map(x=>x.name).join(', ')).slice(0,80),kcal:Math.round(t.kcal),protein:Math.round(t.p),carbs:Math.round(t.c),fat:Math.round(t.f),eaten_at:when.toISOString(),shared:sh,photo_path:path,items:it,meal_type:document.querySelector('[name=mt]').value,ai_items:a.orig||null,ai_model:r.model||null});
  if(e.error)return toast(trErr(e.error.message));
  if(a.pendId){await pendDel(a.pendId);await loadPend()}S.ai=null;S.stT=0;toast('Öğün kaydedildi.');if(p){const sv={f:p.orig};S.saved=sv;setTimeout(()=>{if(S.saved===sv){S.saved=null;render()}},25000)}load()}
 app.addEventListener('change',async e=>{
@@ -579,7 +590,7 @@ async function loadStreaks(ids){
  const a=new Date();a.setDate(a.getDate()-120);
  const{data}=await db.from('meals').select('user_id,eaten_at').in('user_id',ids).gte('eaten_at',a.toISOString()).limit(3000);
  const by={};(data||[]).forEach(m=>(by[m.user_id]??=new Set()).add(dkey(new Date(m.eaten_at))));
- S.st={};ids.forEach(i=>S.st[i]=streak(by[i]||new Set()));S.stStart={};if(by[S.me.id])S.stStart[S.me.id]=streakStart(by[S.me.id]);celebrate()}
+ S.myDays=by[S.me.id]||new Set();S.st={};ids.forEach(i=>S.st[i]=streak(by[i]||new Set()));S.stStart={};if(by[S.me.id])S.stStart[S.me.id]=streakStart(by[S.me.id]);celebrate()}
 const streakLine=()=>(S.st?.[S.me.id]||0)>=2?`<div class="newb" style="margin:-6px 0 10px;text-align:center">${S.st[S.me.id]} günlük seri</div>`:'';
 /* gün değerlendirmesi */
 const sig=()=>S.meals.map(m=>m.id).join();
@@ -836,16 +847,18 @@ const cset=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
 const Q=()=>cget('q')||[];
 const isNet=e=>/fetch|network|failed|load failed/i.test(e?.message||'');
 function qpush(row){cset('q',[...Q(),{id:'tmp_'+Date.now()+Math.random().toString(36).slice(2,6),row}]);toast('İnternet yok: öğün telefonda bekliyor, bağlantı gelince gönderilecek.');return{queued:true}}
+async function ins(row){row.id??=crypto.randomUUID();const r=await db.from('meals').insert(row);return r.error&&/duplicate key/i.test(r.error.message)?{}:r}
 async function saveMeal(row){
+ row.id??=crypto.randomUUID();
  if(!navigator.onLine)return qpush(row);
- const r=await db.from('meals').insert(row);
+ const r=await ins(row);
  return r.error&&isNet(r.error)?qpush(row):r}
 const queuedFor=(a,b)=>Q().filter(x=>x.row.eaten_at>=a&&x.row.eaten_at<b).map(x=>({...x.row,id:x.id,user_id:S.me.id,_q:true}));
 let flushing=false;
 async function flushQueue(){
  const q=Q();if(!q.length||!navigator.onLine||!S.me||flushing)return;flushing=true;
  const rest=[];let sent=0;
- try{for(const it of q){const r=await db.from('meals').insert(it.row);if(r.error&&isNet(r.error))rest.push(it);else if(!r.error)sent++}}finally{cset('q',rest);flushing=false}
+ try{for(const it of q){const r=await ins(it.row);if(r.error&&isNet(r.error))rest.push(it);else if(!r.error)sent++}}finally{cset('q',rest);flushing=false}
  if(sent){toast(sent+' bekleyen öğün gönderildi.');S.stT=0;load()}}
 const offBanner=()=>S.offline?`<div class="offb">Çevrimdışısın.${Q().length?' '+Q().length+' öğün gönderilmeyi bekliyor.':' Eklediklerin telefonda bekler, bağlantı gelince gönderilir.'}</div>`:'';
 window.addEventListener('offline',()=>{S.offline=true;if(S.me)render()});
@@ -943,7 +956,7 @@ function analyzingHtml(a){
 /* ---------- v23: halka, seri kutlaması, haftalık kart, takviyeler ---------- */
 const ringMode=()=>{try{return localStorage.getItem('ring_mode')||'eaten'}catch{return'eaten'}};
 function ringHtml(eaten,goal,p,c,f){
- const pl=planOf(),mode=ringMode(),left=goal-eaten,over=left<0,R=pl?50:54,C=2*Math.PI*R,frac=Math.min(eaten/goal,1),SZ=pl?156:124,mid=SZ/2,sw=pl?10:12;
+ const pl=null,mode=ringMode(),left=goal-eaten,over=left<0,R=54,C=2*Math.PI*R,frac=Math.min(eaten/goal,1),SZ=124,mid=SZ/2,sw=12;
  const arcs=pl?[[p,pl.p,'cp',62],[c,pl.c,'cc',69],[f,pl.f,'cf',76]].map(([v,t,col,r])=>{const cc=2*Math.PI*r,fr=Math.min(v/t,1);return`<circle cx="${mid}" cy="${mid}" r="${r}" fill="none" style="stroke:var(--soft)" stroke-width="4"/><circle cx="${mid}" cy="${mid}" r="${r}" fill="none" style="stroke:var(--${col})" stroke-width="4" stroke-linecap="round" stroke-dasharray="${cc}" data-c="${cc}" stroke-dashoffset="${cc*(1-fr)}"/>`}).join(''):'';
  const val=mode==='eaten'?eaten:Math.abs(left),lbl=mode==='eaten'?'kcal aldın':over?'kcal hedefin üstünde':'kcal kaldı',sub=mode==='eaten'?`hedef ${goal}, ${over?Math.abs(left)+' fazla':left+' kalan'}`:`${eaten} / ${goal} kcal aldın`;
  return`<div class="card"><div class="ring tap" data-act="ringmode" role="button" aria-label="Kalori halkası. Dokununca aldığın ve kalan arasında geçer">
@@ -1006,6 +1019,7 @@ function unitOf(x){
 const amt=x=>{const u=unitOf(x);return u?`${+(x.grams/u.g).toFixed(1)} ${u.u} (${Math.round(x.grams)} g)`:`${Math.round(x.grams)} g`};
 function qtyInput(attr,i,x){const u=unitOf(x),v=u?+(x.grams/u.g).toFixed(1):Math.round(x.grams),l=u?u.u:'g';
  return`<input type="number" inputmode="decimal" step="any" ${attr}="${i}" value="${v}" min="0" style="margin:0;width:70px" aria-label="${esc(l)}"><small class="mute" style="min-width:28px">${esc(l)}</small>`}
+async function saveAI(){if(S.saving)return;S.saving=true;try{await saveAI0()}finally{S.saving=false}}
 let refreshing=false;
 async function refresh(){
  if(!S.me||refreshing||document.hidden||app.querySelector('.swc.open')||S.sheet||S.bc||S.ed||S.story||S.ai||S.detail||S.zoom||/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName||''))return;
