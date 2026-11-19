@@ -167,6 +167,9 @@ li.m.swl{display:block;padding:0;position:relative;overflow:hidden}
 .grp{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;margin:6px 0 16px}
 .prow{display:flex;align-items:center;justify-content:space-between;width:100%;padding:14px 16px;text-align:left;border-bottom:1px solid var(--line);color:var(--ink);gap:10px}
 .prow:last-child{border:0}.prow b{display:block}.prow small{color:var(--mute)}
+nav{z-index:3}
+li.m.swl{isolation:isolate}
+#app{padding-bottom:calc(env(safe-area-inset-bottom) + 112px)}
 </style></head>
 <body><div id="app"><div class="boot" id="boot" role="status"><svg width="72" height="72" viewBox="0 0 72 72" aria-hidden="true"><circle cx="36" cy="36" r="28" fill="none" style="stroke:var(--soft)" stroke-width="8"/><path d="M36 8a28 28 0 0 1 24.2 14" fill="none" style="stroke:var(--acc)" stroke-width="8" stroke-linecap="round"/></svg><b>Kalori</b><small class="b5">Bağlantı yavaş görünüyor, biraz daha bekle...</small><small class="b15">Hâlâ açılmadıysa uygulamayı kapatıp tekrar aç.</small></div></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
@@ -252,10 +255,12 @@ async function load(){
   if(S.ntLoaded){const nw=nt.filter(x=>!x.read&&!old.has(x.id));if(nw.length)toast(ntText(nw[0])+(nw.length>1?` (+${nw.length-1})`:''))}
   S.ntLoaded=true}
  if(!S.stT||Date.now()-S.stT>120000){S.stT=Date.now();await loadStreaks([S.me.id,...fids])}
- const ps=[...S.meals,...S.feed,...(S.ff||[])].map(m=>m.photo_path).filter(Boolean);S.urls={};
- if(ps.length){const{data:su}=await db.storage.from('meal-photos').createSignedUrls(ps,3600);(su||[]).forEach(x=>{if(x.signedUrl)S.urls[x.path]=x.signedUrl})}
- const ap=Object.values(S.pr).map(p=>p.avatar_path).filter(Boolean);S.av={};
- if(ap.length){const{data:au}=await db.storage.from('avatars').createSignedUrls(ap,3600);(au||[]).forEach(x=>{if(x.signedUrl)S.av[x.path]=x.signedUrl})}
+ S.uc??={};const nowT=Date.now();
+ const signed=async(bucket,paths)=>{const need=[...new Set(paths)].filter(p=>!S.uc[bucket+p]||S.uc[bucket+p].e<nowT);
+  if(need.length){try{const{data}=await db.storage.from(bucket).createSignedUrls(need,3600);(data||[]).forEach(x=>{if(x.signedUrl)S.uc[bucket+x.path]={u:x.signedUrl,e:nowT+50*60000}})}catch{}}
+  const out={};paths.forEach(p=>{const c=S.uc[bucket+p];if(c)out[p]=c.u});return out};
+ S.urls=await signed('meal-photos',[...S.meals,...S.feed,...(S.ff||[])].map(m=>m.photo_path).filter(Boolean));
+ S.av=await signed('avatars',Object.values(S.pr).map(p=>p.avatar_path).filter(Boolean));
  render()}
 
 /* ---------- Ekranlar ---------- */
@@ -542,7 +547,7 @@ app.addEventListener('submit',async e=>{
   S.p.daily_goal=g;toast('Hedef kaydedildi.');render()}
 });
 /* ---------- Fotoğraftan analiz ---------- */
-const th=m=>S.urls[m.photo_path]?`<img class="thumb" src="${S.urls[m.photo_path]}" alt="">`:'';
+const th=m=>S.urls[m.photo_path]?`<img class="thumb" loading="lazy" decoding="async" src="${S.urls[m.photo_path]}" alt="">`:'';
 const FJ={exact:.05,high:.15,medium:.25,low:.35};
 const PRE=[{name:'Zeytinyağı',chip:'Zeytinyağı 1 yk',unit:'yk',unit_g:14,grams:14,kcal_per_100g:884,protein_per_100g:0,carbs_per_100g:0,fat_per_100g:100},{name:'Ekmek',chip:'Ekmek 1 dilim',unit:'dilim',unit_g:30,grams:30,kcal_per_100g:265,protein_per_100g:9,carbs_per_100g:49,fat_per_100g:3},{name:'Sos/mayonez',chip:'Sos 1 yk',unit:'yk',unit_g:15,grams:15,kcal_per_100g:680,protein_per_100g:1,carbs_per_100g:1,fat_per_100g:75}];
 async function shrink(f,mx=1024){
@@ -553,7 +558,7 @@ async function shrink(f,mx=1024){
  const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.7));
  const b64=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result.split(',')[1]);fr.readAsDataURL(blob)});
  return{blob,b64,orig:f,url:URL.createObjectURL(blob)}}
-const VER='v26';
+const VER='v27';
 const mm=x=>{const f=v=>Math.round(x.grams*(+v||0)/100);return dt('cp')+'protein '+f(x.protein_per_100g)+' g '+dt('cc')+'karb. '+f(x.carbs_per_100g)+' g '+dt('cf')+'yağ '+f(x.fat_per_100g)+' g'};
 const im=x=>{const u=unitOf(x);return(u?`≈ ${Math.round(x.grams)} g, `:'')+Math.round(x.grams*(+x.kcal_per_100g||0)/100)+' kcal, '+mm(x)};
 function tot(){const it=S.ai.res.items,s=k=>it.reduce((a,x)=>a+x.grams*(+x[k]||0)/100,0);return{kcal:s('kcal_per_100g'),p:s('protein_per_100g'),c:s('carbs_per_100g'),f:s('fat_per_100g')}}
@@ -900,7 +905,7 @@ function feedCards(){
  const l=S.ff||[];
  return l.length?l.map(m=>`<div class="card tap" style="margin-bottom:12px;padding:0;overflow:hidden" data-act="detail" data-id="${m.id}">
   <div class="row" style="padding:12px 14px;gap:10px">${avatar(m.user_id,36)}<div style="flex:1;min-width:0"><b>${esc(S.names[m.user_id]||'?')}</b><small style="display:block">${ago(m.eaten_at)}${m.meal_type?', '+TYPES[m.meal_type]:''}</small></div><span class="k">${m.kcal} kcal</span></div>
-  ${S.urls[m.photo_path]?`<img src="${S.urls[m.photo_path]}" alt="" style="width:100%;aspect-ratio:4/3;object-fit:cover;display:block">`:''}
+  ${S.urls[m.photo_path]?`<img loading="lazy" decoding="async" src="${S.urls[m.photo_path]}" alt="" style="width:100%;aspect-ratio:4/3;object-fit:cover;display:block">`:''}
   <div style="padding:10px 14px"><b>${esc(m.name)}</b><small style="display:block">${dt('cp')}${+m.protein||0} g${dt('cc')}${+m.carbs||0} g${dt('cf')}${+m.fat||0} g</small></div>${qrxRow(m)}</div>`).join(''):'<div class="empty">Arkadaşlarının son 7 günde paylaştığı öğünler burada görünür.</div>'}
 /* ---------- v20: bekleyen fotoğraflar (sonra analiz et) ---------- */
 const idb=()=>new Promise((res,rej)=>{const r=indexedDB.open('kalori',1);r.onupgradeneeded=()=>r.result.createObjectStore('pend',{keyPath:'id'});r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
