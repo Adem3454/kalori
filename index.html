@@ -503,6 +503,8 @@ app.addEventListener('click',async e=>{
   S.hl={...S.hl,has:true,token:tok};render()}
  else if(a==='hdel'){if(confirm('Apple Sağlık bağlantısı kaldırılsın mı? Kısayol çalışmayı bırakır.')){await db.from('health_tokens').delete().eq('user_id',S.me.id);S.hl={...S.hl,has:false,token:null};render()}}
  else if(a==='copy'){const v={url:SUPABASE_URL+'/rest/v1/rpc/health_sync',key:SUPABASE_KEY,token:S.hl?.token}[id];if(v)navigator.clipboard?.writeText(v).then(()=>toast('Kopyalandı'),()=>toast('Kopyalanamadı, elle seç ve kopyala.'))}
+ else if(a==='stepsrefresh'){await load();toast('Yenilendi.')}
+ else if(a==='stepsrun')runShortcut(true)
  else if(a==='ringmode'){try{localStorage.setItem('ring_mode',ringMode()==='eaten'?'left':'eaten')}catch{}render()}
  else if(a==='wkimg')weekImage();
  else if(a==='sup'){const t=S.suppLog||[],on=t.includes(id),day=dkey(S.day);S.suppLog=on?t.filter(x=>x!==id):[...t,id];render();
@@ -592,7 +594,7 @@ async function shrink(f,mx=1024){
  const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.7));
  const b64=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result.split(',')[1]);fr.readAsDataURL(blob)});
  return{blob,b64,orig:f,url:URL.createObjectURL(blob)}}
-const VER='v28';
+const VER='v29';
 const mm=x=>{const f=v=>Math.round(x.grams*(+v||0)/100);return dt('cp')+'protein '+f(x.protein_per_100g)+' g '+dt('cc')+'karb. '+f(x.carbs_per_100g)+' g '+dt('cf')+'yağ '+f(x.fat_per_100g)+' g'};
 const im=x=>{const u=unitOf(x);return(u?`≈ ${Math.round(x.grams)} g, `:'')+Math.round(x.grams*(+x.kcal_per_100g||0)/100)+' kcal, '+mm(x)};
 function tot(){const it=S.ai.res.items,s=k=>it.reduce((a,x)=>a+x.grams*(+x[k]||0)/100,0);return{kcal:s('kcal_per_100g'),p:s('protein_per_100g'),c:s('carbs_per_100g'),f:s('fat_per_100g')}}
@@ -1146,13 +1148,14 @@ function healthSheet(){
  const h=S.hl||{};
  return`<small class="mute">iPhone’daki Kısayollar uygulaması her gece Apple Sağlık’taki kilonu ve adımlarını buraya gönderebilir. Veriler sadece sana özel, arkadaşların görmez. Adımlar bilgi olarak gösterilir, hedefini değiştirmez. Kilon güncellenirse günlük hedefin de yeniden hesaplanır.</small>
  ${h.last?`<div class="card" style="margin:10px 0"><b>Son aktarım</b><small style="display:block">${esc(h.last)}</small></div>`:''}
- <button class="btn" style="margin-top:10px" data-act="hnew">${h.has?'Anahtarı yenile':'Bağlantı anahtarı oluştur'}</button>
+ ${scSection()}<button class="btn" style="margin-top:10px" data-act="hnew">${h.has?'Anahtarı yenile':'Bağlantı anahtarı oluştur'}</button>
  ${h.token?`<div class="card" style="margin-top:12px"><b>Kısayol için bilgiler</b><small class="mute" style="display:block;margin:4px 0 8px">Anahtar sadece şimdi gösteriliyor. Kapatırsan yenilemen gerekir. Yeni anahtar eskisini geçersiz kılar.</small>
   <label>Adres</label><div class="row"><small style="flex:1;word-break:break-all">${esc(SUPABASE_URL)}/rest/v1/rpc/health_sync</small><button class="btn ghost sm" data-act="copy" data-id="url">Kopyala</button></div>
   <label style="display:block;margin-top:8px">apikey (herkese açık anahtar)</label><div class="row"><small style="flex:1;word-break:break-all">${esc(SUPABASE_KEY)}</small><button class="btn ghost sm" data-act="copy" data-id="key">Kopyala</button></div>
   <label style="display:block;margin-top:8px">Gizli bağlantı anahtarın (p_token)</label><div class="row"><small style="flex:1;word-break:break-all">${esc(h.token)}</small><button class="btn ghost sm" data-act="copy" data-id="token">Kopyala</button></div></div>`:''}
  ${h.has?`<button class="link" style="color:var(--over);font-weight:500" data-act="hdel">Bağlantıyı kaldır</button>`:''}`}
-const stepsView=()=>S.stepsDay!=null?`<div class="row sp" style="margin:10px 0"><small class="mute">Adım sayısı (Apple Sağlık)</small><b>${S.stepsDay.toLocaleString('tr-TR')}</b></div>`:'';
+const stepsView=()=>{const has=S.stepsDay!=null,cfg=!!lsGet('sc_name');if(!has&&!cfg)return'';
+ return`<div class="row sp" style="margin:10px 0"><span><small class="mute">Adım sayısı (Apple Sağlık)</small><b style="display:block">${has?S.stepsDay.toLocaleString('tr-TR'):'—'}</b></span><span class="row" style="gap:6px"><button class="btn ghost sm" data-act="stepsrefresh">Yenile</button>${cfg?'<button class="btn ghost sm" data-act="stepsrun">Güncelle</button>':''}</span></div>`};
 async function syncWeightFromLog(){
  const b=S.body;if(!b?.sex||!b.birth_year||!b.height_cm)return;
  const{data}=await db.from('weights').select('day,kg').order('day',{ascending:false}).limit(1).maybeSingle();
@@ -1160,6 +1163,22 @@ async function syncWeightFromLog(){
  S.body={...b,weight_kg:+data.kg};const g=calcGoal(S.body);
  await db.from('body_info').upsert({...S.body,id:S.me.id});
  if(g!==S.p.daily_goal){await db.from('profiles').update({daily_goal:g}).eq('id',S.me.id);S.p.daily_goal=g;toast('Kilon güncellendi, yeni hedefin '+g+' kcal.')}}
+/* ---------- v29: adımları kısayolla güncelle ---------- */
+function runShortcut(manual){
+ const n=lsGet('sc_name');if(!n)return manual&&toast('Önce Profil > Apple Sağlık bölümünden kısayolunun adını yaz.');
+ try{localStorage.setItem('sc_last',String(Date.now()))}catch{}
+ location.href='shortcuts://run-shortcut?name='+encodeURIComponent(n)}
+const scSection=()=>`<div class="card" style="margin:10px 0"><b>Adımları güncelle</b>
+ <label style="display:block;margin-top:6px">Kısayolunun adı (Kısayollar uygulamasındaki ad)</label><input type="text" data-scn value="${esc(lsGet('sc_name')||'')}" placeholder="Kalori Sağlık" maxlength="60" style="margin-bottom:8px">
+ <button class="btn sm" data-act="stepsrun">Adımları şimdi güncelle</button>
+ <label class="chk" style="margin:12px 0 4px"><input type="checkbox" data-scauto ${lsGet('sc_auto')==='1'?'checked':''}> Uygulamayı açınca ilk dokunuşta otomatik çalıştır (deneysel)</label>
+ <small class="mute" style="display:block">iPhone, kısayolu çalıştırırken Kısayollar uygulamasına geçer ve işi bitince orada kalır, Kalori'ye kendin dönersin. Uygulamadan hiç çıkmadan çalıştırmak için telefonun arkasına çift dokunmayı kısayola bağlayabilirsin (Ayarlar > Erişilebilirlik > Dokunma > Arkaya Dokun).</small></div>`;
+app.addEventListener('input',e=>{if(e.target.matches('[data-scn]')){try{localStorage.setItem('sc_name',e.target.value.trim())}catch{}}});
+app.addEventListener('change',e=>{if(e.target.matches('[data-scauto]')){try{localStorage.setItem('sc_auto',e.target.checked?'1':'0')}catch{}}});
+let scTried=false;
+addEventListener('pointerup',()=>{if(scTried||!S.me)return;scTried=true;
+ if(lsGet('sc_auto')!=='1'||!lsGet('sc_name'))return;
+ if(Date.now()-(+lsGet('sc_last')||0)<30*60000)return;runShortcut(false)},{passive:true});
 let refreshing=false;
 async function refresh(){
  if(!S.me||refreshing||document.hidden||app.querySelector('.swc.open')||S.sheet||S.bc||S.ed||S.ps||S.rc||S.story||S.ai||S.detail||S.zoom||/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName||''))return;
